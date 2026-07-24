@@ -1,0 +1,21 @@
+# 全擋再白名單：只有明列的工作流資產入版控，
+# runtime 產物（sessions/cache/憑證/transcripts）一律不進
+*
+.DS_Store
+!.gitignore
+!CLAUDE.md
+!settings.json
+!statusline.sh
+!skills/
+!skills/**
+!agents/
+!agents/**
+!hooks/
+!hooks/**
+# memory 要備份，但它上層的 projects/ 是 transcripts，只放行 memory
+!projects/
+projects/*
+!projects/-Users-mike/
+projects/-Users-mike/*
+!projects/-Users-mike/memory/
+!projects/-Users-mike/memory/**

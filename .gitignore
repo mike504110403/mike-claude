@@ -1,7 +1,6 @@
 # 全擋再白名單：只有明列的工作流資產入版控，
 # runtime 產物（sessions/cache/憑證/transcripts）一律不進
 *
-.DS_Store
 !.gitignore
 !CLAUDE.md
 !settings.json
@@ -19,3 +18,5 @@ projects/*
 projects/-Users-mike/*
 !projects/-Users-mike/memory/
 !projects/-Users-mike/memory/**
+# 放在最後才能蓋過上面的白名單
+.DS_Store

@@ -19,9 +19,11 @@ CLEANUP_DIR=""
 
 cleanup() {
   local f
-  for f in "${TMP_FILES[@]}"; do
-    [ -n "$f" ] && [ -f "$f" ] && rm -f "$f"
-  done
+  if [ ${#TMP_FILES[@]} -gt 0 ]; then
+    for f in "${TMP_FILES[@]}"; do
+      [ -n "$f" ] && [ -f "$f" ] && rm -f "$f"
+    done
+  fi
   if [ -n "$CLEANUP_DIR" ] && [ -d "$CLEANUP_DIR" ]; then
     rm -rf "$CLEANUP_DIR"
   fi
@@ -163,10 +165,10 @@ install_claude_home() {
   local repo_src="$1"
 
   if [ ! -d "$CLAUDE_HOME" ]; then
-    log "全新安裝：git clone 到 $CLAUDE_HOME（日後更新 = cd ~/.claude && git pull）"
+    log "全新安裝：git clone 到 ${CLAUDE_HOME}（日後更新 = cd ~/.claude && git pull）"
     git clone --quiet "$repo_src" "$CLAUDE_HOME"
   else
-    log "偵測到既有 $CLAUDE_HOME，僅複製白名單資產，其他既有檔案不動"
+    log "偵測到既有 ${CLAUDE_HOME}，僅複製白名單資產，其他既有檔案不動"
 
     local f
     for f in CLAUDE.md statusline.sh; do
@@ -227,7 +229,7 @@ main() {
   if [ -z "${INSTALL_NAME:-}" ]; then
     log "  - CLAUDE.md 裡的「Mike」尚未替換，之後可重跑並設 INSTALL_NAME=你的名字，或手動編輯 ~/.claude/CLAUDE.md"
   else
-    log "  - CLAUDE.md 裡的「Mike」已替換為「$INSTALL_NAME」"
+    log "  - CLAUDE.md 裡的「Mike」已替換為「${INSTALL_NAME}」"
   fi
   log "  - 若需要完整版 settings.json（含 permissions.defaultMode / model 等個人化設定），設 MIKE_CLAUDE_FULL=1 重跑本腳本"
   log "  - Claude Code 內執行 /config 可開啟手機推播通知"

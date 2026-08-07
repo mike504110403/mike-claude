@@ -1,0 +1,34 @@
+#!/bin/bash
+# 工作流階段檔：跟著 tmux session 走（~/.claude/phases/<session名>）
+# 用法：
+#   phase set 'feature brief▸派工▸[驗收]▸review▸commit'   # 在 Claude 所在 pane 內執行
+#   phase clear                                            # lane 收尾刪檔
+#   phase show [session名]                                 # tmux 狀態列用（#S 由 tmux 先展開傳入）
+dir="$HOME/.claude/phases"
+
+key_for() {
+  if [ -n "$1" ]; then printf '%s' "$1"
+  else tmux display-message -p '#S' 2>/dev/null || printf 'default'
+  fi
+}
+
+case "$1" in
+  set)
+    mkdir -p "$dir"
+    printf '%s\n' "$2" > "$dir/$(key_for)"
+    ;;
+  clear)
+    rm -f "$dir/$(key_for)"
+    ;;
+  show)
+    f="$dir/$(key_for "$2")"
+    [ -f "$f" ] || exit 0
+    # 超過 6 小時未更新視為殘留，不顯示
+    age=$(( $(date +%s) - $(stat -f %m "$f" 2>/dev/null || echo 0) ))
+    [ "$age" -lt 21600 ] && head -1 "$f"
+    ;;
+  *)
+    echo "usage: phase set '<text>' | clear | show [session]" >&2
+    exit 1
+    ;;
+esac

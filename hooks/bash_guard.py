@@ -38,6 +38,18 @@ def main():
     if re.search(r"\bgit\s+add\s+(\.(\s|$)|-A\b|--all\b)", cmd):
         respond("deny", "硬擋：git add . / -A 被禁止，請逐一指定要加入的檔案。")
 
+    # 硬擋：強制刪分支 / 強制移除 worktree（/feature-flow：清理只用 -d / remove）
+    if re.search(r"\bgit\s+branch\s+(-\w+\s+)*-D\b", cmd):
+        respond("deny", "硬擋：git branch -D 被禁止——分支未完全合併就先查明差在哪些 commit，清理只用 -d（/feature-flow）。")
+    if re.search(r"\bgit\s+worktree\s+remove\b", cmd) and re.search(r"(\s--force\b|\s-f\b)", cmd):
+        respond("deny", "硬擋：git worktree remove --force 被禁止——先查明未 commit 改動是什麼再處置（/feature-flow）。")
+
+    # 強制詢問：覆蓋工作區未 commit 改動（退件教訓：曾洗掉工人未 commit 的修正）
+    if re.search(r"\bgit\s+checkout\s+--\s", cmd):
+        respond("ask", "警示：git checkout -- 會覆蓋未 commit 改動（變異還原請改用 cp 備份）。確定要丟棄？")
+    if re.search(r"\bgit\s+restore\b", cmd) and not re.search(r"--staged\b", cmd):
+        respond("ask", "警示：git restore 會覆蓋未 commit 改動。確定要丟棄？")
+
     # 強制詢問：git push（Push 閘門）
     if re.search(r"\bgit\s+push\b", cmd):
         respond("ask", "Push 閘門：git push 需要 Mike 明確確認才能執行。")

@@ -21,7 +21,7 @@ description: agent 工程派工的分支與 worktree 生命週期：最新 dev �
 git worktree add ../<repo名>-wt-<task-slug> -b wt/<feature名>/<task-slug> feature/<名稱>
 ```
 
-- worktree 放在 repo 外側的 sibling 目錄，命名 `<repo名>-wt-<task-slug>`（沿用 kabo 既有慣例，如 `forever-wt-198`），不污染 repo。
+- worktree 放在 repo 外側的 sibling 目錄，命名 `<repo名>-wt-<task-slug>`，不污染 repo。
 - brief 的「工作環境」欄（/brief 八欄模板）必寫：worktree 絕對路徑、`wt/<feature名>/<task-slug>` 分支、commit 全留在此分支、不 merge / 不 push / 不切分支 / 不動 worktree 之外的目錄。
 
 ## 階段三：合併回 feature + 自動清理 worktree（單一工人驗收 + review chain 通過後即做，不等整波）
@@ -52,5 +52,5 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<feature名>/<task-slug> feat
 
 - 大腦所有 git 操作一律 `git -C <絕對路徑>` 顯式指明 checkout——多 worktree 併行時 `cd` 殘留狀態曾讓 reset/commit 打錯 checkout、連丟兩發 commit；破壞性指令（reset/merge/branch）前先確認該 checkout 的 HEAD 是預期分支。
 - 不 push 任何分支。
-- 清理只用 `-d` / `remove`，絕不 `-D` / `--force`。
+- 清理只用 `-d` / `remove`，絕不 `-D` / `--force`（bash_guard hook 硬擋）。
 - 不在 dev 或 feature 主 checkout 上直接改 code——改動一律發生在工人的 worktree。

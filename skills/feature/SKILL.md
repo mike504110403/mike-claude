@@ -1,19 +1,20 @@
 ---
 name: feature
-description: 標準工程 lane：範圍明確、超出 /quick、技術路線清楚的新功能或修改。brief 派工、驗收、review chain 的完整流程在此。
+description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、需派工、跨 repo）、技術路線清楚的新功能或修改。brief 派工、驗收、review chain 的完整流程在此。
 ---
 
 # /feature — 新功能 / 修改
 
 ## 入選標準
 
-- 範圍明確、超出 /quick（>3 檔案、行為變更不小、或命中 /quick 硬排除）
+- 範圍明確、超出 /solo（多線意圖、需派工、跨 repo、>8 檔，或命中硬排除）
 - 技術路線清楚，不需要先解決策（需要探路 → /mega）
 
 ## 流程
 
 ### 1. 需求對齊
 
+- **改動面與邊界在此定案**：宣告的改動面（後端／前端／前後端）具體化成「動哪些 repo、哪些層」，寫進每份 brief 的範圍欄；對應驗證義務依全域「改動面 × 驗證義務」矩陣，後面各站照表執行。
 - 符合任一：`跨服務`、`涉及金流`、`不可逆操作`、`全域配置`、`範圍明顯大於直覺` → 先提 **A/B 兩方案**（各含取捨與風險）給 Mike 選，等點頭才動工。
 - 新專案 / 新需求第一次動工前：與 Mike 討論需求與寫法，結論落檔專案 `CLAUDE.md`；重大決策依三條件（難回頭、不看脈絡會奇怪、真有取捨）補 ADR（新專案 `docs/adr/` Matt 格式；有 `.claude/decisions/` 的舊專案沿用原路徑與四段格式）。
 - 已有共識 → 明講「共識已存在（出處），跳過討論」直接動工。
@@ -26,25 +27,17 @@ description: 標準工程 lane：範圍明確、超出 /quick、技術路線清�
 
 ### 3. 驗收（done ≠ done）
 
-1. `git log` 確認 commit 存在
-2. `git diff --stat` 確認範圍與 brief 相符
-3. 抽讀關鍵檔案
-4. **親自跑可執行證據**：相關測試 ＋ typecheck/build 至少一項；工人未附實際輸出視同未完成
-5. 不符 → 重寫 brief 重派，並記退件（見下）
+一律走 **/verify**（四步親驗＋改動面證據）；不符 → 重寫 brief 重派並記退件。
 
 ### 4. Review chain（驗收通過後）
 
-| Reviewer | 觸發 |
-|----------|------|
-| code-reviewer | 每次都跑 |
-| security-reviewer | 金流/付款/認證授權/secrets |
-| db-reviewer | DB schema / migration |
-
-- 有問題 → 退回重派，修完**重跑 review chain**；退件記錄依全域退件回饋迴路。
+一律走 **/review-chain**（觸發表、對照物 = brief、打回重跑全鏈、通過 TaskStop 收工）。
 
 ### 5. 收尾
 
-合併依 /feature-flow 階段三、四；commit 後停下。
+- 合併依 /feature-flow 階段三、四。
+- **改動面 = 前後端**：階段四合併回 dev 前跑**聯測**——後端起服務、前端起 dev server，用 Chrome DevTools MCP 走一遍跨端關鍵流程（前端打的是本次改的後端 API，network 面板確認 payload 與回應）；API 合約以 bruno collection 為對照（有 bruno/ 的專案先跑 /bruno-sync 增量同步再聯測）。
+- commit 後停下。
 
 ## 領域插件
 
@@ -55,7 +48,7 @@ description: 標準工程 lane：範圍明確、超出 /quick、技術路線清�
 
 - 途中冒出未決技術選型 → 宣告升級 /mega（先解決策再回來拆工）。
 - 發現根因不明的壞行為 → 宣告轉 /bug。
-- 發現其實極簡單 → **先問 Mike** 才降 /quick（降級不得自主）。
+- 發現其實極簡單 → **先問 Mike** 才降 /solo 或 /quick（降級不得自主）。
 - 要中途暫停 / 交接 → /wip 收斂。
 
 ## 回報格式（五點）

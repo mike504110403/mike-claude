@@ -12,11 +12,11 @@
 | 純問答 / 查詢 / 報告 | 直接回答，不派工 |
 | 「該不該 / 要不要」決策問題 | /office-hours |
 | 收斂進行中工程 / 續作上次 | /wip |
-| 工程任務 | 判定 lane → **第一句宣告「走 /X，因為…」→ 用 Skill 呼叫該 lane skill 載入流程後才動工** |
+| 工程任務 | 判定 lane ＋ 改動面 → **第一句宣告「走 /X，因為…；改動面：後端／前端／前後端」→ 用 Skill 呼叫該 lane skill 載入流程後才動工** |
 
 ### Lane 一覽
 
-四條：/quick、/feature、/bug、/mega。一行判準即各 skill 的 description（常駐可見），完整入選標準以各 skill 本文為準。
+五條：/quick、/solo、/feature、/bug、/mega。一行判準即各 skill 的 description（常駐可見），完整入選標準以各 skill 本文為準。
 
 ### 跳線
 
@@ -28,9 +28,19 @@
 
 ## 跨 lane 不變式（不依賴 skill 載入，永遠生效）
 
-### /quick 硬排除
+### /quick、/solo 硬排除
 
-不論改動多小，碰到 `金流`、`認證授權`、`DB migration`、`全域配置`、`不可逆操作` 一律不得走 /quick，至少 /feature。
+不論改動多小，碰到 `金流`、`認證授權`、`DB migration`、`全域配置`、`不可逆操作` 一律不得走 /quick 或 /solo，至少 /feature。
+
+### 改動面 × 驗證義務（分流時判定，貫穿全程）
+
+宣告 lane 時同句宣告改動面；途中發現改動面擴大（如後端改著改著動到前端）→ 當下補宣告並補齊對應義務。義務跟著改動面走，不多不少：後端-only 不做前端驗證、前端-only 不硬湊後端測試。
+
+| 改動面 | 驗收證據（大腦親跑） | review chain 追加 |
+|--------|--------------------|-------------------|
+| 後端 | 測試 ＋ build（如 `go test` ＋ `go build`） | 依既有觸發（security / db） |
+| 前端 | typecheck ＋ Chrome DevTools MCP 瀏覽器實測（依 /vue-dev） | ui-reviewer |
+| 前後端 | 兩者皆備，且合併回 dev 前**聯測**：後端起服務、前端用 MCP 走關鍵流程 | ui-reviewer ＋ 依既有觸發 |
 
 ### 角色 × 模型矩陣（派工的 model 參數）
 
@@ -40,6 +50,7 @@
 | 實作工人：一般功能、測試撰寫 | `sonnet` |
 | 實作工人：金流 / 架構 / 複雜演算法 | `opus` |
 | code-reviewer | `sonnet`（金流 / 架構大改用 `opus`） |
+| ui-reviewer（前端行為實測） | `sonnet` |
 | security-reviewer / db-reviewer | `opus` |
 | 診斷根因 / 選型研究 | `opus` |
 | 探索 / 搜尋 / 機械雜活 / 大量掃描 | `haiku` |
@@ -47,10 +58,22 @@
 
 ### 派工紀律
 
-- 派工一律加 `name`（「任務-角色」風格）；同時最多 **5 個**具名工人，多的排隊、收一補一。
+- 派工一律加 `name`（「任務-角色」風格）；同時上限**依工作型態 3-8，預設 5**，多的排隊、收一補一：
+  - 輕型（haiku 掃描 / 讀碼 / 文件）可至 **8**
+  - 編譯測試重型（go test/build、godot import）**4-5**
+  - 含 dev server ＋瀏覽器實測 **3-4**（RAM 大戶）
+  - 上限的真正瓶頸是大腦串行驗收與 API 吞吐，不是核心數——隊列開始積壓就降回 5。
 - 工人完成驗收後用 **TaskStop** 收掉，不走工人自行關閉協議。
-- done ≠ done：工人回報後大腦必親自抽查 ＋ 親跑可執行證據（步驟在 /feature skill）。
+- done ≠ done：工人回報後大腦必親自抽查 ＋ 親跑可執行證據（步驟在 /verify skill）。
 - 退件回饋迴路：驗收不符或 reviewer 打回 → memory 記一行（任務、原因、歸類）；同類累積成 pattern → 修規則源頭，修完刪記錄。
+
+### 階段顯示（tmux 狀態列同步）
+
+- 進有階段性的 lane（/solo、/feature、/bug、/mega）時宣告階段：
+  `~/.claude/bin/phase set 'feature brief▸派工▸[驗收]▸review▸commit'`
+  （單行、`▸` 串接全部階段、當前階段用 `[]` 框、開頭放 lane 名）
+- 每次階段轉換重新 `phase set` 更新括號位置；lane 收尾（commit 完）`~/.claude/bin/phase clear`。
+- 檔案跟著 tmux session 走（`~/.claude/phases/<session名>`），tmux 狀態列每 5 秒自動刷新；超過 6 小時未更新自動隱藏。
 
 ### Commit / Push 紀律
 

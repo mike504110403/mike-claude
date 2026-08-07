@@ -11,6 +11,8 @@
 !agents/**
 !hooks/
 !hooks/**
+!bin/
+!bin/**
 # projects/（transcripts 與 memory）一律不進版控（2026-08-07 Mike 裁示：memory 不上 git）
 # 放在最後才能蓋過上面的白名單
 .DS_Store

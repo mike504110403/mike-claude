@@ -17,7 +17,11 @@ reset_at=''
 case "$1" in
   5h-reset)  # 純倒數文字（給 widget 自己上色），5h 視窗剩餘時間
     r=$("$JQ" -r '.rate_limits.five_hour.resets_at // empty' <<<"$input")
-    [ -n "$r" ] && printf '%s' "$(remain "$r")"
+    [ -n "$r" ] && printf '(%s)' "$(remain "$r")"
+    exit 0 ;;
+  week-reset)  # 純倒數文字，7 天視窗剩餘時間
+    r=$("$JQ" -r '.rate_limits.seven_day.resets_at // empty' <<<"$input")
+    [ -n "$r" ] && printf '(%s)' "$(remain "$r")"
     exit 0 ;;
   ctx)  pct=$("$JQ" -r '.context_window.used_percentage // 0' <<<"$input"); label='Ctx' ;;
   5h)   pct=$("$JQ" -r '.rate_limits.five_hour.used_percentage // empty' <<<"$input"); label='5h'

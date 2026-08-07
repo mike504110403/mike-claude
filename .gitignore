@@ -5,6 +5,9 @@
 !CLAUDE.md
 !settings.json
 !statusline.sh
+!statusline-dispatch.sh
+!statuslines/
+!statuslines/**
 !install.sh
 !tmux.conf
 !skills/
@@ -18,3 +21,5 @@
 # projects/（transcripts 與 memory）一律不進版控（2026-08-07 Mike 裁示：memory 不上 git）
 # 放在最後才能蓋過上面的白名單
 .DS_Store
+# statusline 切換指標是各機器自己的執行期狀態
+statuslines/.active

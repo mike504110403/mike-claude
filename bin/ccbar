@@ -1,0 +1,55 @@
+#!/bin/bash
+# ccstatusline 的 custom-command：%＋八分格條同格顯示（配 preserveColors: true）
+# 用法：ccbar ctx|5h|week ；stdin 吃 Claude Code statusline JSON
+# 色票與 60/85 變色門檻同 ~/.claude/statusline.sh
+JQ=$(command -v jq || echo /opt/homebrew/bin/jq)
+input=$(cat)
+
+remain() { # epoch → "2h15m" / "5d2h"（同 statusline.sh）
+  local now diff d h m
+  now=$(date +%s); diff=$(( $1 - now ))
+  [ "$diff" -lt 0 ] && diff=0
+  d=$((diff / 86400)); h=$((diff % 86400 / 3600)); m=$((diff % 3600 / 60))
+  if [ "$d" -gt 0 ]; then printf '%dd%dh' "$d" "$h"; else printf '%dh%02dm' "$h" "$m"; fi
+}
+
+reset_at=''
+case "$1" in
+  ctx)  pct=$("$JQ" -r '.context_window.used_percentage // 0' <<<"$input"); label='Ctx' ;;
+  5h)   pct=$("$JQ" -r '.rate_limits.five_hour.used_percentage // empty' <<<"$input"); label='5h'
+        reset_at=$("$JQ" -r '.rate_limits.five_hour.resets_at // empty' <<<"$input") ;;
+  week) pct=$("$JQ" -r '.rate_limits.seven_day.used_percentage // empty' <<<"$input"); label='週'
+        reset_at=$("$JQ" -r '.rate_limits.seven_day.resets_at // empty' <<<"$input") ;;
+  *)    exit 0 ;;
+esac
+[ -z "$pct" ] && exit 0   # rate limit 資料未到（第一次 API 回應前）就整格不顯示
+pct=${pct%.*}
+
+FG_TEXT=$'\033[1;38;2;200;211;245m'   # 主文字 #c8d3f5 粗體
+FG_DIM=$'\033[38;2;99;109;166m'       # 標籤 #636da6
+C_GREEN=$'\033[38;2;195;232;141m'
+C_YELLOW=$'\033[38;2;255;199;119m'
+C_RED=$'\033[38;2;255;117;127m'
+C_TRACK=$'\033[38;2;47;51;77m'
+
+width=5
+if [ "$pct" -ge 85 ]; then col=$C_RED
+elif [ "$pct" -ge 60 ]; then col=$C_YELLOW
+else col=$C_GREEN; fi
+eighths=$(( (pct * width * 8 + 50) / 100 ))
+[ "$eighths" -gt $((width * 8)) ] && eighths=$((width * 8))
+[ "$pct" -gt 0 ] && [ "$eighths" -eq 0 ] && eighths=1
+[ "$pct" -lt 100 ] && [ "$eighths" -eq $((width * 8)) ] && eighths=$((width * 8 - 1))
+full=$((eighths / 8)) part=$((eighths % 8))
+partials=('' '▏' '▎' '▍' '▌' '▋' '▊' '▉')
+
+bar="$col"
+for ((i = 0; i < width; i++)); do
+  if ((i < full)); then bar+='█'
+  elif ((i == full)) && ((part > 0)); then bar+="${partials[part]}"
+  else bar+="${C_TRACK}░"; fi
+done
+
+out="${FG_DIM}${label} ${bar} ${FG_TEXT}${pct}%"
+[ -n "$reset_at" ] && out+=" ${FG_DIM}($(remain "$reset_at"))"
+printf '%s' "$out"

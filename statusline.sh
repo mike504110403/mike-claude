@@ -31,17 +31,22 @@ fmt_tok() {
   else printf '%d' "$n"; fi
 }
 
-bar() { # 用量條：<60% 綠、60–84% 黃、≥85% 紅；空軌深灰
-  local pct=$1 width=5 filled i col
+bar() { # 用量條：<60% 綠、60–84% 黃、≥85% 紅；空軌深灰；八分格精度（每格 20%、細分 2.5%）
+  local pct=$1 width=5 i col
   if [ "$pct" -ge 85 ]; then col=$C_RED
   elif [ "$pct" -ge 60 ]; then col=$C_YELLOW
   else col=$C_GREEN; fi
-  filled=$((pct * width / 100))
-  [ "$filled" -gt "$width" ] && filled=$width
+  local eighths=$(( (pct * width * 8 + 50) / 100 ))
+  [ "$eighths" -gt $((width * 8)) ] && eighths=$((width * 8))
+  [ "$pct" -gt 0 ] && [ "$eighths" -eq 0 ] && eighths=1
+  [ "$pct" -lt 100 ] && [ "$eighths" -eq $((width * 8)) ] && eighths=$((width * 8 - 1))
+  local full=$((eighths / 8)) part=$((eighths % 8))
+  local partials=('' '▏' '▎' '▍' '▌' '▋' '▊' '▉')
   printf '%s' "$col"
   for ((i = 0; i < width; i++)); do
-    ((i == filled)) && printf '%s' "$C_TRACK"
-    if ((i < filled)); then printf '█'; else printf '░'; fi
+    if ((i < full)); then printf '█'
+    elif ((i == full)) && ((part > 0)); then printf '%s' "${partials[part]}"
+    else printf '%s░' "$C_TRACK"; fi
   done
   printf '%s' "$RESET"
 }

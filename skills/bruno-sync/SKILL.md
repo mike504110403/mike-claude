@@ -7,6 +7,11 @@ description: 把專案 API 整理成 Bruno collection。repo 沒有 bruno/ 時�
 
 模式自動判斷：repo 無 `bruno/` → **初次全量匯入**；已有 → **增量同步**。
 
+## 工具定案（2026-07-21）與 App 注意事項
+
+- 工具定案 **Bruno**：local-first 純文字 `.bru` 檔，大腦直接讀寫檔案即完成同步，不需 token / 雲端 / MCP。Postman、Apidog、任何 MCP 方案已評估否決，勿再推薦。
+- **環境變數一律直接編輯 `bruno/environments/*.bru`，不用 App 的環境編輯器**（3.5.3 實測：UI Save 會把環境檔刪掉不寫回、面板 import 會製造撞名幽靈環境；升版確認修復前都適用）。token 類變數用 `vars:secret [...]` 標 secret。App 狀態髒掉時：退出 Bruno → 修 `~/Library/Application Support/bruno/ui-state-snapshot.json` 的環境路徑 → 重寫環境檔 → 重開。
+
 ## 大腦執行流程
 
 1. 偵測框架與路由註冊位置（gin/echo/express…）。**Code 是唯一真相來源**：swagger/openapi 檔只作交叉參考；被註解掉的路由不收。

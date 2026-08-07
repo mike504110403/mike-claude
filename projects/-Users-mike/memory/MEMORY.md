@@ -1,5 +1,0 @@
-- [工人回報必帶 summary](teammate-report-needs-summary.md) — SendMessage 字串訊息缺 summary 會卡死、大腦收不到通知
-- [GitKraken MCP 不採用](gitkraken-mcp-not-needed.md) — 有 Pro 但單 repo 用不上，除非未來有跨 repo 情境
-- [API 測試工具用 Bruno](api-testing-tool-bruno.md) — local-first 純檔案，大腦直接寫 .bru 即同步，不用 MCP / 雲端 / token
-- [Bruno 3.5.3 環境編輯器 bug](bruno-v3-env-editor-bug.md) — UI Save 會刪掉環境檔，環境變數一律直接改檔案不走 UI
-- [mattpocock/skills 採用紀錄](mattpocock-skills-adopted.md) — 裝了哪三個、改造了哪兩處、日後怎麼更新

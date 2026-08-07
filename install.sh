@@ -82,7 +82,9 @@ resolve_repo_src() {
   if [ -n "$script_source" ] && [ -f "$script_source" ]; then
     script_dir="$(cd "$(dirname "$script_source")" && pwd)"
   fi
-  if [ -n "$script_dir" ] && [ -f "$script_dir/.gitignore" ] && [ -d "$script_dir/skills" ] && [ -d "$script_dir/.git" ]; then
+  # 注意：.git 在一般 clone 是目錄，但在 git worktree（例如 wt/ 分支）是純文字檔
+  # （內容 "gitdir: ..." 指標），所以用 -e 判斷存在即可、不能用 -d 限定目錄。
+  if [ -n "$script_dir" ] && [ -f "$script_dir/.gitignore" ] && [ -d "$script_dir/skills" ] && [ -e "$script_dir/.git" ]; then
     log "未設定 MIKE_CLAUDE_REPO，偵測到腳本位於 repo checkout 內，直接以此為來源：$script_dir"
     REPO_SRC="$script_dir"
     return 0

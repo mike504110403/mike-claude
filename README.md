@@ -84,6 +84,14 @@ MIKE_CLAUDE_FULL=1 curl -fsSL https://raw.githubusercontent.com/mike504110403/mi
 cd ~/.claude && git pull
 ```
 
+由於安裝時 `settings.json` 已被過濾掉三個個人化鍵（見上方「安全預設」），`~/.claude` 這個 clone 對 `settings.json` 會有一筆本地變更，屬正常現象。多數情況下 `git pull` 仍會成功；如果上游剛好也改到 `settings.json` 導致 `git pull` 被本地差異擋下，用這組指令復原（重跑安裝腳本會重新套用過濾邏輯）：
+
+```bash
+git -C ~/.claude checkout -- settings.json && git -C ~/.claude pull && bash ~/.claude/install.sh
+```
+
+（`MIKE_CLAUDE_FULL=1` 安裝的使用者沒有這個本地差異，不受影響。）
+
 若當初是裝在既有的 `~/.claude` 上（白名單複製模式），沒有內建更新指令，重跑一次安裝腳本即可（既有檔案會自動備份後覆蓋成最新版）。
 
 ## 裝完之後

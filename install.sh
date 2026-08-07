@@ -160,6 +160,21 @@ with open(path, "w", encoding="utf-8") as f:
 PYEOF
 }
 
+# fresh clone 時 origin 預設指向 clone 來源（可能是 mktemp 暫存目錄，腳本結束就被
+# cleanup trap 刪掉）；只有這種「經暫存中轉」的情況才需要修正回可長期使用的來源，
+# 自我偵測（直接以持久 checkout 為來源）不動，因為 origin 本來就指向持久路徑。
+fix_origin_after_clone() {
+  [ -n "$CLEANUP_DIR" ] || return 0
+  local explicit_repo="${MIKE_CLAUDE_REPO:-}"
+  if [ -n "$explicit_repo" ]; then
+    log "修正 origin 為顯式來源：${explicit_repo}"
+    git -C "$CLAUDE_HOME" remote set-url origin "$explicit_repo"
+  else
+    log "修正 origin 為預設來源：${DEFAULT_REPO}"
+    git -C "$CLAUDE_HOME" remote set-url origin "$DEFAULT_REPO"
+  fi
+}
+
 # ── 3. 安裝 ~/.claude ────────────────────────────────────
 install_claude_home() {
   local repo_src="$1"
@@ -167,6 +182,7 @@ install_claude_home() {
   if [ ! -d "$CLAUDE_HOME" ]; then
     log "全新安裝：git clone 到 ${CLAUDE_HOME}（日後更新 = cd ~/.claude && git pull）"
     git clone --quiet "$repo_src" "$CLAUDE_HOME"
+    fix_origin_after_clone
   else
     log "偵測到既有 ${CLAUDE_HOME}，僅複製白名單資產，其他既有檔案不動"
 
@@ -232,6 +248,7 @@ main() {
     log "  - CLAUDE.md 裡的「Mike」已替換為「${INSTALL_NAME}」"
   fi
   log "  - 若需要完整版 settings.json（含 permissions.defaultMode / model 等個人化設定），設 MIKE_CLAUDE_FULL=1 重跑本腳本"
+  log "  - 之後用 cd ~/.claude && git pull 更新；若被 settings.json 本地過濾差異卡住屬正常現象，復原：git -C ~/.claude checkout -- settings.json && git -C ~/.claude pull && bash ~/.claude/install.sh"
   log "  - Claude Code 內執行 /config 可開啟手機推播通知"
   log "  - Windows 使用者：Claude Code 與本工作流需在 WSL 內執行，不是 Windows 原生終端機"
 }

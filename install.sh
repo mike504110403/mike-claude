@@ -82,7 +82,7 @@ resolve_repo_src() {
   if [ -n "$script_source" ] && [ -f "$script_source" ]; then
     script_dir="$(cd "$(dirname "$script_source")" && pwd)"
   fi
-  if [ -n "$script_dir" ] && [ -f "$script_dir/.gitignore" ] && [ -d "$script_dir/skills" ]; then
+  if [ -n "$script_dir" ] && [ -f "$script_dir/.gitignore" ] && [ -d "$script_dir/skills" ] && [ -d "$script_dir/.git" ]; then
     log "未設定 MIKE_CLAUDE_REPO，偵測到腳本位於 repo checkout 內，直接以此為來源：$script_dir"
     REPO_SRC="$script_dir"
     return 0
@@ -179,6 +179,17 @@ fix_origin_after_clone() {
   fi
 }
 
+# 正規化路徑（解 symlink），用來判斷「來源即安裝目標」；目標不存在時原樣印回
+# （不存在就不可能與已存在的來源相等，交給呼叫端的 [ -d "$CLAUDE_HOME" ] 分流）。
+normalize_path() {
+  local p="$1"
+  if [ -d "$p" ]; then
+    (cd "$p" && pwd -P)
+  else
+    printf '%s' "$p"
+  fi
+}
+
 # ── 3. 安裝 ~/.claude ────────────────────────────────────
 install_claude_home() {
   local repo_src="$1"
@@ -188,22 +199,33 @@ install_claude_home() {
     git clone --quiet "$repo_src" "$CLAUDE_HOME"
     fix_origin_after_clone
   else
-    log "偵測到既有 ${CLAUDE_HOME}，僅複製白名單資產，其他既有檔案不動"
+    local repo_src_norm claude_home_norm
+    repo_src_norm="$(normalize_path "$repo_src")"
+    claude_home_norm="$(normalize_path "$CLAUDE_HOME")"
 
-    local f
-    for f in CLAUDE.md statusline.sh; do
-      backup_if_exists "$CLAUDE_HOME/$f"
-      cp "$repo_src/$f" "$CLAUDE_HOME/$f"
-    done
+    if [ "$repo_src_norm" = "$claude_home_norm" ]; then
+      # 自我偵測命中、且腳本就躺在 ~/.claude 自己裡面：來源＝目的，沒有東西可複製
+      # （對每個白名單項 backup_if_exists 會先把來源本身搬走，cp 必炸）。跳過整段
+      # 白名單搬移，只重跑「原地」步驟：過濾/客製化/權限，repo 內容更新交給 git pull。
+      log "來源即安裝目標（${CLAUDE_HOME} 本身），進原地更新模式：跳過白名單複製，只重跑過濾與客製化；更新 repo 內容請用 git -C ~/.claude pull"
+    else
+      log "偵測到既有 ${CLAUDE_HOME}，僅複製白名單資產，其他既有檔案不動"
 
-    backup_if_exists "$CLAUDE_HOME/settings.json"
-    cp "$repo_src/settings.json" "$CLAUDE_HOME/settings.json"
+      local f
+      for f in CLAUDE.md statusline.sh; do
+        backup_if_exists "$CLAUDE_HOME/$f"
+        cp "$repo_src/$f" "$CLAUDE_HOME/$f"
+      done
 
-    local d
-    for d in skills agents hooks bin; do
-      backup_if_exists "$CLAUDE_HOME/$d"
-      cp -R "$repo_src/$d" "$CLAUDE_HOME/$d"
-    done
+      backup_if_exists "$CLAUDE_HOME/settings.json"
+      cp "$repo_src/settings.json" "$CLAUDE_HOME/settings.json"
+
+      local d
+      for d in skills agents hooks bin; do
+        backup_if_exists "$CLAUDE_HOME/$d"
+        cp -R "$repo_src/$d" "$CLAUDE_HOME/$d"
+      done
+    fi
   fi
 
   filter_settings_in_place "$CLAUDE_HOME/settings.json"

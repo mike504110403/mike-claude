@@ -90,6 +90,8 @@ cd ~/.claude && git pull
 git -C ~/.claude checkout -- settings.json && git -C ~/.claude pull && bash ~/.claude/install.sh
 ```
 
+注意：復原指令最後那個 `bash ~/.claude/install.sh` 是直接從 `~/.claude` 內部執行安裝腳本，這時它會偵測到「來源就是自己」，進入**原地更新模式**——只重新套用 settings.json 過濾、`INSTALL_NAME` 客製化與權限設定，不會複製/覆蓋任何檔案（沒有東西可複製）。要更新 repo 內容一律靠上面的 `git pull`，`install.sh` 本身不負責抓新版程式碼。
+
 （`MIKE_CLAUDE_FULL=1` 安裝的使用者沒有這個本地差異，不受影響。）
 
 若當初是裝在既有的 `~/.claude` 上（白名單複製模式），沒有內建更新指令，重跑一次安裝腳本即可（既有檔案會自動備份後覆蓋成最新版）。

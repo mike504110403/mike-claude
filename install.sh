@@ -60,6 +60,10 @@ check_deps() {
 }
 
 # ── 2. 來源解析：顯式 MIKE_CLAUDE_REPO > 自我偵測 > 預設 GitHub URL ──
+# 注意：直接呼叫（不透過 $(...) command substitution），因為 command substitution
+# 會在子 shell 執行，這裡設的 CLEANUP_DIR / REPO_SRC 全域變數在子 shell 裡改了也
+# 傳不回主 shell（曾經因此讓 cleanup trap 抓不到暫存目錄、origin 修正也失效）。
+REPO_SRC=""
 resolve_repo_src() {
   local explicit_repo="${MIKE_CLAUDE_REPO:-}"
 
@@ -70,7 +74,7 @@ resolve_repo_src() {
     log "MIKE_CLAUDE_REPO 已顯式設定，clone 來源：$explicit_repo"
     git clone --quiet "$explicit_repo" "$tmp_clone" \
       || { err "git clone 失敗，來源：$explicit_repo"; exit 1; }
-    printf '%s' "$tmp_clone"
+    REPO_SRC="$tmp_clone"
     return 0
   fi
 
@@ -80,7 +84,7 @@ resolve_repo_src() {
   fi
   if [ -n "$script_dir" ] && [ -f "$script_dir/.gitignore" ] && [ -d "$script_dir/skills" ]; then
     log "未設定 MIKE_CLAUDE_REPO，偵測到腳本位於 repo checkout 內，直接以此為來源：$script_dir"
-    printf '%s' "$script_dir"
+    REPO_SRC="$script_dir"
     return 0
   fi
 
@@ -90,7 +94,7 @@ resolve_repo_src() {
   log "未設定 MIKE_CLAUDE_REPO 且非 repo checkout 內執行，clone 預設來源：$DEFAULT_REPO"
   git clone --quiet "$DEFAULT_REPO" "$tmp_clone" \
     || { err "git clone 失敗，來源：$DEFAULT_REPO"; exit 1; }
-  printf '%s' "$tmp_clone"
+  REPO_SRC="$tmp_clone"
 }
 
 # ── 備份工具：同名檔/目錄先搬去 .bak-<timestamp>，timestamp 撞號時加序號 ──
@@ -222,11 +226,10 @@ install_tmux_conf() {
 main() {
   check_deps
 
-  local repo_src
-  repo_src="$(resolve_repo_src)"
+  resolve_repo_src
 
-  install_claude_home "$repo_src"
-  install_tmux_conf "$repo_src"
+  install_claude_home "$REPO_SRC"
+  install_tmux_conf "$REPO_SRC"
 
   log ""
   log "=== 安裝完成 ==="

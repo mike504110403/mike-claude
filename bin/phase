@@ -24,7 +24,7 @@ case "$1" in
     f="$dir/$(key_for "$2")"
     [ -f "$f" ] || exit 0
     # 超過 6 小時未更新視為殘留，不顯示
-    age=$(( $(date +%s) - $(stat -f %m "$f" 2>/dev/null || echo 0) ))
+    age=$(( $(date +%s) - $(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0) ))
     [ "$age" -lt 21600 ] && head -1 "$f"
     ;;
   *)

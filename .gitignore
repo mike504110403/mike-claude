@@ -5,6 +5,8 @@
 !CLAUDE.md
 !settings.json
 !statusline.sh
+!install.sh
+!tmux.conf
 !skills/
 !skills/**
 !agents/

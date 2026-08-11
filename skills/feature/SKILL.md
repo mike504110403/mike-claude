@@ -41,8 +41,9 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 ## 領域插件
 
-- Go：brief 紀律欄引 /tdd；驗收證據 `go test` ＋ `go build`；碰 schema 觸發 db-reviewer。
-- Vue：brief 紀律欄引 /vue-dev、/vue-ui-patterns；驗收證據 `vue-tsc --noEmit` ＋ **Chrome DevTools MCP 瀏覽器實測**（不寫測試檔，詳見 /vue-dev）。
+- Go：brief 紀律欄引 /tdd；碰 schema 觸發 db-reviewer。
+- Vue：brief 紀律欄引 /vue-dev、/vue-ui-patterns（不寫測試檔，詳見 /vue-dev）。
+- 驗收證據不在此重抄——唯一依據全域「改動面 × 驗證義務」矩陣（棧別具體指令住在 /tdd、/vue-dev）。
 
 ## 跳線
 
@@ -54,6 +55,6 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 ## 回報格式（五點）
 
 1. 改了什麼 2. 為什麼 3. 影響面 4. 驗證證據（測試輸出、diff stat）5. 還可以做什麼（不擅自執行）。
-答案先行、次要問題只在第 5 點列一行、多波任務帶進度重述（N 波完成 M）。
+   答案先行、次要問題只在第 5 點列一行、多波任務帶進度重述（N 波完成 M）。
 
 **影響面（第 3 點）的紀律**：寫「改 A 會導致 B」之前把 B 那段程式碼讀到底（守衛條件、early return、迴圈取的是哪一層）——grep 到欄位被讀只證明被讀，不證明在哪個分支對誰生效；先搜同專案有沒有人論證過同一件事；「完全相同／不變」要帶值域條件；影響面宣稱在 brief 裡標成待驗假設交 reviewer 查證。錯的影響面會寫進 commit message 變成下一個人的錯誤前提。

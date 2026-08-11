@@ -27,8 +27,7 @@ description: 低風險小改 lane：預估 ≤3 檔案、行為變更小、有�
 
 ## 領域插件
 
-- Go：`go test ./...`（相關套件）＋ `go build ./...` 輸出為證據。
-- Vue：`vue-tsc --noEmit` ＋ Chrome DevTools MCP 開頁面實測受影響畫面（依 /vue-dev）。
+驗收證據不在此重抄——唯一依據全域「改動面 × 驗證義務」矩陣（棧別具體指令住在 /tdd、/vue-dev）。
 
 ## 跳線
 

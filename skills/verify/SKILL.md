@@ -12,8 +12,7 @@ description: done≠done 驗收積木：工人回報後大腦親驗的固定步�
 1. **確認 commit 存在**：`git -C <worktree> log --oneline -5`。要驗的是「即將被合併的那個 commit 裡有什麼」——用 `git show <branch>:<path>` 或 `git diff <base>..<branch>`，**不要 grep worktree 現況**（工作目錄可能有未 commit 的內容，合併進去的分支不含它）。
 2. **範圍對帳**：`git diff --stat` 對 brief 範圍欄——多改的（scope creep）與少改的都要追。
 3. **抽讀關鍵檔**：不信回報宣稱的規格版本，以 commit 內容為準。
-4. **親跑可執行證據**（照全域「改動面 × 驗證義務」矩陣）：
-   - 後端：相關測試 ＋ build；前端：typecheck ＋ Chrome DevTools MCP 實測（依 /vue-dev）；前後端：兩者皆備。
+4. **親跑可執行證據**：跑什麼**唯一依據全域 CLAUDE.md「改動面 × 驗證義務」矩陣**（本檔不重抄，防漂移）。
    - 工人未附實際執行輸出，視同未完成。
    - 帶變異證明的：抽查時**選工人沒做過的變異**，並先確認變異真的套上（diff 有輸出）再看紅綠。
 

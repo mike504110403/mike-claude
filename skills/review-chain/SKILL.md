@@ -7,12 +7,14 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 ## 觸發表
 
-| Reviewer | 觸發 | 模型 |
-|----------|------|------|
-| code-reviewer | 每次都跑 | `sonnet`（金流 / 架構大改用 `opus`） |
-| ui-reviewer | 改動面含前端——拿 brief（或任務描述）的實測步驟用 Chrome DevTools MCP 重走一遍 | `sonnet` |
-| security-reviewer | 金流 / 付款 / 認證授權 / secrets | `opus` |
-| db-reviewer | DB schema / migration | `opus` |
+本表是 reviewer 觸發的**唯一 source**；模型選配唯一依據全域「角色 × 模型矩陣」，不在此重抄。
+
+| Reviewer          | 觸發                                                                          |
+| ----------------- | ----------------------------------------------------------------------------- |
+| code-reviewer     | 每次都跑                                                                      |
+| ui-reviewer       | 改動面含前端——拿 brief（或任務描述）的實測步驟用 Chrome DevTools MCP 重走一遍 |
+| security-reviewer | 金流 / 付款 / 認證授權 / secrets                                              |
+| db-reviewer       | DB schema / migration                                                         |
 
 ## Review 對照物（Spec 軸拿什麼審）
 

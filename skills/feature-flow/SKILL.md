@@ -24,11 +24,19 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<feature名>/<task-slug> feat
 - worktree 放在 repo 外側的 sibling 目錄，命名 `<repo名>-wt-<task-slug>`，不污染 repo。
 - brief 的「工作環境」欄（/brief 八欄模板）必寫：worktree 絕對路徑、`wt/<feature名>/<task-slug>` 分支、commit 全留在此分支、不 merge / 不 push / 不切分支 / 不動 worktree 之外的目錄。
 
-## 階段三：合併回 feature + 自動清理 worktree（單一工人驗收 + review chain 通過後即做，不等整波）
+## 階段三：整併 commit + 合併回 feature + 自動清理 worktree（單一工人驗收 + review chain 通過後即做，不等整波）
 
-1. 在主 checkout：`git checkout feature/<名稱>` → `git merge wt/<feature名>/<task-slug>`。
+1. **先整併 commit——一任務一顆**（2026-08-11 起，dev 歷史收斂用）。在工人 worktree：
+   ```
+   git -C <worktree路徑> reset --soft $(git -C <worktree路徑> merge-base HEAD feature/<名稱>)
+   git -C <worktree路徑> commit -m "<type>: <任務描述>"
+   ```
+   - 工人的過程 commit（wip、fix typo…）全部壓成一顆，message 由大腦依任務內容正式撰寫（含 Co-Authored-By 尾綴）。
+   - 工人本來就只有一顆且 message 合格 → 跳過整併。
+   - reset --soft 前先 `git -C <worktree路徑> status` 確認沒有未 commit 改動混入（有就先依「清 worktree 前先 git status」規則處置）。
+2. 在主 checkout：`git checkout feature/<名稱>` → `git merge wt/<feature名>/<task-slug>`。
    - 有衝突：依 /resolving-merge-conflicts 逐塊解；解不掉回報 Mike。
-2. 合併成功後**立即清理**，三步一組不拆開：
+3. 合併成功後**立即清理**，三步一組不拆開：
    ```
    git worktree remove ../<repo名>-wt-<task-slug>
    git branch -d wt/<feature名>/<task-slug>
@@ -51,6 +59,8 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<feature名>/<task-slug> feat
 ## 禁止事項
 
 - 大腦所有 git 操作一律 `git -C <絕對路徑>` 顯式指明 checkout——多 worktree 併行時 `cd` 殘留狀態曾讓 reset/commit 打錯 checkout、連丟兩發 commit；破壞性指令（reset/merge/branch）前先確認該 checkout 的 HEAD 是預期分支。
+- **merge 前一律先 `git branch --show-current` 確認站在哪個分支**，不能靠「我記得我切了」。`git branch X dev` 只建分支**不會切過去**——建與切要在同一個指令鏈完成（`git checkout -b`，或建完立刻 checkout 並驗證），否則後續每個指令都在原分支上跑而不自知（實測踩過：merge 落到本地 dev，未 push 才得以無痛復原）。
+- **清 worktree 前先 `git status`**：工人回報「工作區乾淨」不一定準——實測遇過工人改完更好的版本卻沒 commit 就回報，若直接 `worktree remove` 會連同改進一起消失且無人知曉。有未提交改動就先看內容再決定 commit 或丟棄。
 - 不 push 任何分支。
 - 清理只用 `-d` / `remove`，絕不 `-D` / `--force`（bash_guard hook 硬擋）。
 - 不在 dev 或 feature 主 checkout 上直接改 code——改動一律發生在工人的 worktree。

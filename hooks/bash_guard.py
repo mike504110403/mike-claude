@@ -54,6 +54,25 @@ def main():
     if re.search(r"\bgit\s+push\b", cmd):
         respond("ask", "Push 閘門：git push 需要 Mike 明確確認才能執行。")
 
+    # 硬擋：git clean 帶清除旗標（會洗掉未 commit / untracked 改動，含工人未回報的修正）
+    if re.search(r"\bgit\s+clean\b", cmd) and re.search(r"\s-\w*[fdxX]", cmd):
+        respond("deny", "硬擋：git clean -f/-d/-x 會洗掉未 commit 與 untracked 改動。先 git status 查明，逐一處置。")
+
+    # 強制詢問：git reset --hard（丟棄工作區與 index）
+    if re.search(r"\bgit\s+reset\s+(-\w+\s+)*--hard\b", cmd):
+        respond("ask", "警示：git reset --hard 會丟棄未 commit 改動。確定？")
+
+    # 強制詢問：遞迴刪除（rm -r 不帶 -f 也要問）與 find -delete
+    if re.search(r"\brm\s+(-\w*\s+)*-\w*r", cmd):
+        respond("ask", "警示：遞迴刪除。目標路徑確認過了嗎？")
+    if re.search(r"\bfind\b.*\s-delete\b", cmd):
+        respond("ask", "警示：find -delete 批次刪除。先跑一次不帶 -delete 確認清單。")
+
+    # 強制詢問：名稱疑似含 commit/push/部署的 script（hook 看不進 script 內容）
+    if re.search(r"\b(npm|pnpm|yarn)\s+run\s+(commit|push|deploy|release|publish)\b", cmd) or \
+       re.search(r"\bmake\s+(deploy|release|publish|push)\b", cmd):
+        respond("ask", "警示：此 script 名稱疑似含 commit/push/部署動作，hook 看不進內容。先讀 script 確認實際做什麼。")
+
     # 強制詢問：nginx / 執行 migration
     if re.search(r"\bnginx\b", cmd, re.IGNORECASE):
         respond("ask", "全域規則：nginx 相關操作需 Mike 確認。")

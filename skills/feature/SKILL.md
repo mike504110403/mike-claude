@@ -36,7 +36,7 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 ### 5. 收尾
 
 - 合併依 /feature-flow 階段三、四。
-- **改動面 = 前後端**：階段四合併回 dev 前跑**聯測**——後端起服務、前端起 dev server，用 Chrome DevTools MCP 走一遍跨端關鍵流程（前端打的是本次改的後端 API，network 面板確認 payload 與回應）；API 合約以 bruno collection 為對照（有 bruno/ 的專案先跑 /bruno-sync 增量同步再聯測）。
+- **改動面 = 前後端**：階段四合併回 dev 前跑**聯測**——/local-stack 起地端棧（後端服務＋前端 dev server，API 位址確認指向地端），環境就緒後**交 Mike 手動**走跨端關鍵流程；Mike 不在電腦前或明示代跑時改走 **/auto-e2e** 由大腦用 Chrome MCP 代測。API 合約以 bruno collection 為對照（有 bruno/ 的專案先跑 /bruno-sync 增量同步再聯測）。
 - commit 後停下。
 
 ## 領域插件

@@ -22,7 +22,7 @@ description: 中型單線 lane：超出 /quick（約 4-8 檔）但單一意圖�
 
 1. **宣告**：第一句「走 /solo，因為…；改動面：後端／前端／前後端」。驗證義務照全域「改動面 × 驗證義務」矩陣。
 2. 依 /sync-dev 拉最新 dev 後切 feature 分支（/feature-flow 階段一），大腦在 feature 分支上**直接改**。
-3. **自驗**：走 /verify 的直改裁剪（自我 diff 過範圍＋照改動面矩陣親跑證據；前後端面 MCP 實測時後端真的跑著即為聯測）。
+3. **自驗**：走 /verify 的直改裁剪（自我 diff 過範圍＋照改動面矩陣親跑證據）。
 4. **Review**：走 /review-chain（對照物 = 宣告文擴寫的任務描述；打回修完重跑全鏈）。
 5. 改動涉及 API 且專案有 `bruno/` → 照跑 /bruno-sync。
 6. Commit 後停下。

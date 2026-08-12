@@ -33,7 +33,7 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
 <盡量寫成「跑這個指令要看到什麼結果」：
 
 - `go test ./internal/foo/...` 全綠，含新增的 <行為> 測試
-- `npx vue-tsc --noEmit` 無錯誤
+- `pnpm exec vue-tsc --noEmit` 無錯誤（一律用專案自身執行檔；**禁止裸 `npx`**——沒裝依賴時會靜默抓 registry 新版產出假結果；worktree 先依 lock 檔裝依賴並確認 `node_modules/.bin/` 有該工具）
   寫不成可執行的（如文案、樣式），寫成可肉眼查核的具體描述>
 
 ## 紀律

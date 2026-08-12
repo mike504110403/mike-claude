@@ -29,6 +29,8 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 一律走 **/verify**（四步親驗＋改動面證據）；不符 → 重寫 brief 重派並記退件。
 
+**Per-worker pipeline（不空等）**：工人 A 進驗收／review 時，大腦立刻接工人 B 的回報、或寫下一份 brief、或處理下一個需求——驗收攤平到工人執行期間，不等整波齊。並行超過 2 工人（或多需求並行）時 /wip 看板必開，寫任何裁示前先查表。
+
 ### 4. Review chain（驗收通過後）
 
 一律走 **/review-chain**（觸發表、對照物 = brief、打回重跑全鏈、通過 TaskStop 收工）。

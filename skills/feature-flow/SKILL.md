@@ -1,66 +1,64 @@
 ---
 name: feature-flow
-description: agent 工程派工的分支與 worktree 生命週期：最新 dev 切 feature → 每個工人一個 worktree（wt/ 分支）→ 合併回 feature 即清 worktree → 合併回 dev 即清 feature。所有同 repo 的工程派工都走這個流程。
+description: 工程的分支與 worktree 生命週期：主 checkout 恆 dev，每個需求一個 feature worktree、每個工人一個 wt/ worktree；合併回 feature 即清工人 worktree，合併回 dev（含重驗＋三清）即清 feature。所有 lane（含 quick/solo 直改）與同 repo 多需求並行都走這個拓撲。
 ---
 
-# /feature-flow — 派工分支 / worktree 生命週期
+# /feature-flow — 分支 / worktree 生命週期
 
-同 repo 的 agent 工程一律走這四個階段。派 Agent 時**不再帶 `isolation: "worktree"`**——worktree 由本 skill 手動開、手動收，生命週期才可控。
+## 拓撲不變式（2026-08-12 起）
 
-## 階段一：開 feature（工程開始）
+- **主 checkout 永遠站 dev**：只做 /sync-dev 與階段四合併，HEAD 不切換、不直接改 code。
+- **每個需求一個 feature worktree**（quick/solo 直改也在裡面做）；**每個工人一個 wt/ worktree** 從 feature 掛出。任何 checkout 的 HEAD 從開到收都不變——`git -C` 打錯路徑時，HEAD 也不會是意料外的分支。
+- 同 repo 多需求並行＝多個 feature worktree 並存；**合併回 dev 一律由大腦串行執行**；每 repo 同時至多一個大腦 session（全域不變式）。
+- 派 Agent 不帶 `isolation: "worktree"`——worktree 由本 skill 手動開、手動收，生命週期才可控。
+
+## 階段一：開需求
 
 1. 先跑 /sync-dev 把 dev 拉到最新。
-2. `git checkout -b feature/<名稱> dev`。
-3. feature 分支不推 remote（全域規則）。
+2. `git worktree add ../<repo名>-feature-<需求slug> -b feature/<需求slug> dev`
+3. 在 /wip 看板記一行（多需求並行時必開）：需求、feature 分支、**切自 dev hash**（`git -C <主checkout> rev-parse dev`）。
+4. feature 分支不推 remote（全域規則）。前端專案順手依 lock 檔裝依賴（如 `pnpm install --frozen-lockfile`）並確認 `node_modules/.bin/` 有驗證工具（/brief 的 VERIFICATION-TRAPS #6）。
 
 ## 階段二：每個工人開一個 worktree（派工前）
 
-不論單工人或多工人，一律每個工人一個 worktree：
-
 ```
-git worktree add ../<repo名>-wt-<task-slug> -b wt/<feature名>/<task-slug> feature/<名稱>
+git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feature/<需求slug>
 ```
 
-- worktree 放在 repo 外側的 sibling 目錄，命名 `<repo名>-wt-<task-slug>`，不污染 repo。
-- brief 的「工作環境」欄（/brief 八欄模板）必寫：worktree 絕對路徑、`wt/<feature名>/<task-slug>` 分支、commit 全留在此分支、不 merge / 不 push / 不切分支 / 不動 worktree 之外的目錄。
+- worktree 放 repo 外側 sibling 目錄，不污染 repo；前端專案同樣先裝依賴再派工。
+- brief 的「工作環境」欄必寫：worktree 絕對路徑、`wt/<需求slug>/<task-slug>` 分支、commit 全留在此分支、不 merge / 不 push / 不切分支 / 不動 worktree 之外的目錄。
 
-## 階段三：整併 commit + 合併回 feature + 自動清理 worktree（單一工人驗收 + review chain 通過後即做，不等整波）
+## 階段三：整併 commit ＋ 合併回 feature ＋ 清工人 worktree（單一工人驗收＋review 通過即做，不等整波）
 
-1. **先整併 commit——一任務一顆**（2026-08-11 起，dev 歷史收斂用）。在工人 worktree：
+1. **整併 commit——一任務一顆**。在工人 worktree：
    ```
-   git -C <worktree路徑> reset --soft $(git -C <worktree路徑> merge-base HEAD feature/<名稱>)
-   git -C <worktree路徑> commit -m "<type>: <任務描述>"
+   git -C <工人worktree> reset --soft $(git -C <工人worktree> merge-base HEAD feature/<需求slug>)
+   git -C <工人worktree> commit -m "<type>: <任務描述>"
    ```
-   - 工人的過程 commit（wip、fix typo…）全部壓成一顆，message 由大腦依任務內容正式撰寫（含 Co-Authored-By 尾綴）。
-   - 工人本來就只有一顆且 message 合格 → 跳過整併。
-   - reset --soft 前先 `git -C <worktree路徑> status` 確認沒有未 commit 改動混入（有就先依「清 worktree 前先 git status」規則處置）。
-2. 在主 checkout：`git checkout feature/<名稱>` → `git merge wt/<feature名>/<task-slug>`。
-   - 有衝突：依 /resolving-merge-conflicts 逐塊解；解不掉回報 Mike。
-3. 合併成功後**立即清理**，三步一組不拆開：
-   ```
-   git worktree remove ../<repo名>-wt-<task-slug>
-   git branch -d wt/<feature名>/<task-slug>
-   git worktree prune
-   ```
-   - `worktree remove` 被未 commit 改動擋下 → 不用 `--force`，先查明那些改動是什麼再處置。
-   - `branch -d` 被擋（未完全合併）→ 不用 `-D`，先查明差在哪些 commit。
+   - 過程 commit 全部壓成一顆，message 由大腦正式撰寫（含 Co-Authored-By 尾綴）；本來就一顆且合格則跳過。
+   - reset --soft 前先 `git -C <工人worktree> status` 確認沒有未 commit 改動混入。
+2. **在 feature worktree（不是主 checkout）合併**：先 `git -C <feature worktree> branch --show-current` 確認站在 feature 分支 → `git -C <feature worktree> merge wt/<需求slug>/<task-slug>`。
+   - 衝突依 /resolving-merge-conflicts 逐塊解；解不掉回報 Mike。
+3. 合併成功後**立即清工人 worktree**，三步一組：`worktree remove` → `branch -d` → `worktree prune`。被擋不 force——先查明未 commit 改動或未合併 commit 是什麼再處置。
 
-## 階段四：合併回 dev + 自動清理 feature（整個 feature 完成、全部驗收 + review chain 通過後）
+## 階段四：合併回 dev ＋ 重驗 ＋ 三清（需求全部驗收＋review 通過後）
 
-1. `git checkout dev` → `git merge --no-ff feature/<名稱>`。
-2. 合併成功後**立即清理**：`git branch -d feature/<名稱>`。
-3. 停下。push dev 依全域規則必先問 Mike。
+1. 在主 checkout：`git -C <主checkout> branch --show-current` 確認是 dev → `git merge --no-ff feature/<需求slug>`。
+2. **合併後重驗**（merge queue 的後半）：dev 自本需求切出以來**前進過**（比對看板「切自 dev hash」）→ 在主 checkout 就地重跑本需求改動面的驗收證據（指令同 /verify 第 4 步）。
+   - 失敗 → **不刪 feature 分支**，revert merge 或掛待修回報；dev 未 push，可安全回退。
+   - dev 沒前進過（單需求串行）→ 本步零成本跳過。
+3. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
+4. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）。
+5. 停下。push 與 Mike 批次手測走 **/ship**。
 
 ## 異常路徑
 
-- 工程做到一半要暫停 → 改走 /wip 收斂：**收斂時不做任何清理**，worktree 與分支原樣保留給續作。
-- 工人的 wt 分支被驗收退回 → 重派工可沿用同一個 worktree；任務整個作廢才走階段三的清理三步（先確認分支內容確定不要）。
+- 暫停／交接 → /wip 收斂：**不做任何清理**，worktree 與分支原樣保留給續作。
+- 工人被退件 → 重派沿用同一 worktree；任務作廢才走階段三清理（先確認分支內容確定不要）。
 
 ## 禁止事項
 
-- 大腦所有 git 操作一律 `git -C <絕對路徑>` 顯式指明 checkout——多 worktree 併行時 `cd` 殘留狀態曾讓 reset/commit 打錯 checkout、連丟兩發 commit；破壞性指令（reset/merge/branch）前先確認該 checkout 的 HEAD 是預期分支。
-- **merge 前一律先 `git branch --show-current` 確認站在哪個分支**，不能靠「我記得我切了」。`git branch X dev` 只建分支**不會切過去**——建與切要在同一個指令鏈完成（`git checkout -b`，或建完立刻 checkout 並驗證），否則後續每個指令都在原分支上跑而不自知（實測踩過：merge 落到本地 dev，未 push 才得以無痛復原）。
-- **清 worktree 前先 `git status`**：工人回報「工作區乾淨」不一定準——實測遇過工人改完更好的版本卻沒 commit 就回報，若直接 `worktree remove` 會連同改進一起消失且無人知曉。有未提交改動就先看內容再決定 commit 或丟棄。
-- 不 push 任何分支。
-- 清理只用 `-d` / `remove`，絕不 `-D` / `--force`（bash_guard hook 硬擋）。
-- 不在 dev 或 feature 主 checkout 上直接改 code——改動一律發生在工人的 worktree。
+- 大腦所有 git 操作一律 `git -C <絕對路徑>` 顯式指路徑；破壞性指令（reset/merge/branch）前先 `git branch --show-current` 確認該 checkout 的 HEAD 是預期分支。
+- 主 checkout 不切分支、不直接改 code；一切改動發生在 worktree。
+- **清 worktree 前先 `git status`**：工人回報「乾淨」不一定準（實測遇過工人改完更好的版本沒 commit 就回報）。
+- 不 push 任何分支（push 只發生在 /ship）。清理只用 `-d` / `remove`，絕不 `-D` / `--force`（hook 硬擋）。

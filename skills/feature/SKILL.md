@@ -35,9 +35,9 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 ### 5. 收尾
 
-- 合併依 /feature-flow 階段三、四。
-- **改動面 = 前後端**：階段四合併回 dev 前跑**聯測**——/local-stack 起地端棧（後端服務＋前端 dev server，API 位址確認指向地端），環境就緒後**交 Mike 手動**走跨端關鍵流程；Mike 不在電腦前或明示代跑時改走 **/auto-e2e** 由大腦用 Chrome MCP 代測。API 合約以 bruno collection 為對照（有 bruno/ 的專案先跑 /bruno-sync 增量同步再聯測）。
-- commit 後停下。
+- 合併依 /feature-flow 階段三、四（階段四含合併後重驗與三清）。
+- **改動面含前端**：合併回 dev 前的瀏覽器實測／聯測證據由 **/auto-e2e** 產出（依全域矩陣；/local-stack 起地端棧、API 位址確認指向地端）；**Mike 的手動實測移至 /ship（push 前批次）**——唯一清單外探測，不可省。API 合約以 bruno collection 為對照（有 bruno/ 的專案先 /bruno-sync 增量同步再驗）。
+- commit 後停下；push 走 /ship。
 
 ## 領域插件
 

@@ -3,6 +3,7 @@ name: db-reviewer
 description: 改動涉及 DB schema 或 migration 時，在 code-reviewer 之外加跑的資料庫審查代理。只讀不改。
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: xhigh
 ---
 
 你是 database reviewer，這次改動涉及 schema 或 migration。**只讀不改**。

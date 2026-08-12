@@ -1,0 +1,42 @@
+#!/bin/bash
+# lint-rules — 規則檔靜態檢查：skill frontmatter、name/目錄一致、agent 檔必填欄位、memory 索引死連結。
+# 靜默失效（frontmatter 壞掉的 skill 不報錯只是消失）是本檢查的主要獵物。
+cd "$HOME/.claude" || exit 1
+fail=0
+
+# skills：frontmatter 存在、name 與目錄一致
+for d in skills/*/; do
+  n=$(basename "$d"); f="${d}SKILL.md"
+  if [ ! -f "$f" ]; then echo "FAIL: skills/$n 缺 SKILL.md"; fail=1; continue; fi
+  if ! head -1 "$f" | grep -q '^---$'; then echo "FAIL: $n frontmatter 開頭缺 ---"; fail=1; fi
+  fm_name=$(awk '/^---$/{c++;next} c==1 && /^name:/{sub(/^name: */,"");print;exit}' "$f")
+  if [ "$fm_name" != "$n" ]; then echo "FAIL: $n frontmatter name=「$fm_name」與目錄名不符"; fail=1; fi
+done
+
+# agents：model 與 description 必填；effort 值域檢查
+for f in agents/*.md; do
+  [ -f "$f" ] || continue
+  n=$(basename "$f" .md)
+  grep -q '^model:' "$f" || { echo "FAIL: agent $n 缺 model"; fail=1; }
+  grep -q '^description:' "$f" || { echo "FAIL: agent $n 缺 description"; fail=1; }
+  eff=$(awk '/^effort:/{print $2;exit}' "$f")
+  if [ -n "$eff" ] && ! echo "low medium high xhigh max" | grep -qw "$eff"; then
+    echo "FAIL: agent $n effort=「$eff」不在值域"; fail=1
+  fi
+done
+
+# memory 索引死連結
+idx="projects/-Users-mike/memory/MEMORY.md"
+if [ -f "$idx" ]; then
+  for m in $(grep -oE '\(([a-z0-9-]+\.md)\)' "$idx" | tr -d '()'); do
+    if [ ! -f "projects/-Users-mike/memory/$m" ]; then echo "FAIL: MEMORY.md 指向不存在的 $m"; fail=1; fi
+  done
+fi
+
+# hooks：python 語法可載入
+for f in hooks/*.py; do
+  python3 -m py_compile "$f" 2>/dev/null || { echo "FAIL: $f 語法錯誤"; fail=1; }
+done
+
+if [ "$fail" -eq 0 ]; then echo "lint-rules: PASS"; fi
+exit "$fail"

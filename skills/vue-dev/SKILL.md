@@ -23,7 +23,7 @@ description: Vue 前端專案的開發不變式（強制 script setup + TS、只
 Vue 專案不寫測試檔（Mike 裁示），防線 = typecheck ＋ 瀏覽器實測兩層：
 
 - `pnpm exec vue-tsc --noEmit`（或該專案 build script 已內含 vue-tsc 的 `pnpm build`）**實際輸出**；一律用專案自身執行檔，**禁止裸 `npx`**——無 node_modules 時 npx 會靜默從 registry 抓新版，產出假結果
-- 專案有 lint script 就跑 lint，附實際輸出
+- lint 是驗收標準不是 hook 的事（2026-08-12、08-13 兩犯定案）：brief 驗收標準必含「eslint／stylelint **0 新增 error**（附實際輸出）」；**不得假設 pre-commit hook 會代跑**——已實測兩 repo 的 hook 一個被移除、一個被繞過。lint 工具本身壞掉（如 eslint.config 與版本不相容）→ 回報列為順路發現並在回報明寫「lint 無法執行」，不算通過
 - brief 的驗收標準必須把上述寫成可執行指令；工人回報未附實際輸出視同未完成
 
 ## 瀏覽器實測（行為驗證層，2026-08-12 晚批定案）

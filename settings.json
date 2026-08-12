@@ -1,190 +1,202 @@
 {
-	"env": {
-		"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-	},
-	"permissions": {
-		"allow": [
-			"Bash(go build*)",
-			"Bash(go vet*)",
-			"Bash(go test*)",
-			"Bash(go run*)",
-			"Bash(go mod tidy*)",
-			"Bash(gofmt*)",
-			"Bash(npm run*)",
-			"Bash(npm install*)",
-			"Bash(npm ci*)",
-			"Bash(npx vue-tsc*)",
-			"Bash(docker compose*)",
-			"Bash(docker ps*)",
-			"Bash(docker logs*)",
-			"Bash(docker exec*)",
-			"Bash(psql*)",
-			"Bash(curl*)",
-			"Bash(make*)",
-			"Bash(git add*)",
-			"Bash(git commit*)",
-			"Bash(git status*)",
-			"Bash(git log*)",
-			"Bash(git diff*)",
-			"Bash(git show*)",
-			"Bash(git rm*)",
-			"Bash(cat*)",
-			"Bash(ls*)",
-			"Bash(head*)",
-			"Bash(tail*)",
-			"Bash(wc*)",
-			"Bash(grep*)",
-			"Bash(rg*)",
-			"Bash(find*)",
-			"Bash(tree*)",
-			"Bash(jq*)",
-			"Bash(pg_isready*)",
-			"Bash(godot --headless --path . -s res://tests/run_tests.gd*)",
-			"Bash(godot --headless --path . --quit-after*)",
-			"Bash(godot --headless --path . --import*)",
-			"Bash(flutter test*)",
-			"Bash(flutter analyze*)",
-			"Bash(git checkout*)",
-			"Bash(git switch*)",
-			"Bash(git merge*)",
-			"Bash(git worktree*)",
-			"Bash(git fetch*)",
-			"Bash(python3 -m unittest discover tools/imgen*)"
-		],
-		"defaultMode": "bypassPermissions"
-	},
-	"model": "claude-fable-5[1m]",
-	"hooks": {
-		"PreToolUse": [
-			{
-				"matcher": "Bash",
-				"hooks": [
-					{
-						"type":          "command",
-						"command":       "python3 ~/.claude/hooks/bash_guard.py",
-						"timeout":       10,
-						"statusMessage": "檢查危險命令…"
-					}
-				]
-			},
-			{
-				"matcher": "Edit|Write",
-				"hooks": [
-					{
-						"type":          "command",
-						"command":       "python3 ~/.claude/hooks/file_guard.py",
-						"timeout":       10,
-						"statusMessage": "檢查敏感檔案…"
-					}
-				]
-			},
-			{
-				"matcher": "SendMessage",
-				"hooks": [
-					{
-						"type":          "command",
-						"command":       "python3 ~/.claude/hooks/send_guard.py",
-						"timeout":       10,
-						"statusMessage": "檢查回報格式…"
-					}
-				]
-			},
-			{
-				"matcher": "*",
-				"hooks": [
-					{
-						"type":    "command",
-						"command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh PreToolUse",
-						"timeout": 5,
-						"async":   true
-					}
-				]
-			}
-		],
-		"PostToolUse": [
-			{
-				"matcher": "Edit|Write",
-				"hooks": [
-					{
-						"type":          "command",
-						"command":       "python3 ~/.claude/hooks/format_on_save.py",
-						"timeout":       90,
-						"statusMessage": "自動 format…"
-					}
-				]
-			},
-			{
-				"matcher": "*",
-				"hooks": [
-					{
-						"type":    "command",
-						"command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh PostToolUse",
-						"timeout": 5,
-						"async":   true
-					}
-				]
-			}
-		],
-		"UserPromptSubmit": [
-			{
-				"hooks": [
-					{
-						"type":    "command",
-						"command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh UserPromptSubmit",
-						"timeout": 5,
-						"async":   true
-					}
-				]
-			}
-		],
-		"Stop": [
-			{
-				"hooks": [
-					{
-						"type":    "command",
-						"command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh Stop",
-						"timeout": 5,
-						"async":   true
-					}
-				]
-			}
-		],
-		"Notification": [
-			{
-				"hooks": [
-					{
-						"type":    "command",
-						"command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh Notification",
-						"timeout": 5,
-						"async":   true
-					}
-				]
-			}
-		]
-	},
-	"statusLine": {
-		"type":    "command",
-		"command": "~/.claude/statusline-dispatch.sh",
-		"padding": 0
-	},
-	"enabledPlugins": {
-		"gitkraken-hooks@gitkraken":         true,
-		"gopls-lsp@claude-plugins-official": true,
-		"swift-lsp@claude-plugins-official": true
-	},
-	"effortLevel":                       "high",
-	"tui":                               "fullscreen",
-	"skipDangerousModePermissionPrompt": true,
-	"theme":                             "dark-ansi",
-	"inputNeededNotifEnabled":           true,
-	"agentPushNotifEnabled":             true,
-	"remoteControlAtStartup":            true,
-	"extraKnownMarketplaces": {
-		"gitkraken": {
-			"source": {
-				"path":   "/Users/mike/.claude/plugins/marketplaces/gitkraken",
-				"source": "directory"
-			}
-		}
-	}
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(go build*)",
+      "Bash(go vet*)",
+      "Bash(go test*)",
+      "Bash(go run*)",
+      "Bash(go mod tidy*)",
+      "Bash(gofmt*)",
+      "Bash(npm run*)",
+      "Bash(npm install*)",
+      "Bash(npm ci*)",
+      "Bash(npx vue-tsc*)",
+      "Bash(docker compose*)",
+      "Bash(docker ps*)",
+      "Bash(docker logs*)",
+      "Bash(docker exec*)",
+      "Bash(psql*)",
+      "Bash(curl*)",
+      "Bash(make*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Bash(git rm*)",
+      "Bash(cat*)",
+      "Bash(ls*)",
+      "Bash(head*)",
+      "Bash(tail*)",
+      "Bash(wc*)",
+      "Bash(grep*)",
+      "Bash(rg*)",
+      "Bash(find*)",
+      "Bash(tree*)",
+      "Bash(jq*)",
+      "Bash(pg_isready*)",
+      "Bash(godot --headless --path . -s res://tests/run_tests.gd*)",
+      "Bash(godot --headless --path . --quit-after*)",
+      "Bash(godot --headless --path . --import*)",
+      "Bash(flutter test*)",
+      "Bash(flutter analyze*)",
+      "Bash(git checkout*)",
+      "Bash(git switch*)",
+      "Bash(git merge*)",
+      "Bash(git worktree*)",
+      "Bash(git fetch*)",
+      "Bash(python3 -m unittest discover tools/imgen*)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "model": "claude-fable-5[1m]",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/bash_guard.py",
+            "timeout": 10,
+            "statusMessage": "檢查危險命令…"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/file_guard.py",
+            "timeout": 10,
+            "statusMessage": "檢查敏感檔案…"
+          }
+        ]
+      },
+      {
+        "matcher": "SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/send_guard.py",
+            "timeout": 10,
+            "statusMessage": "檢查回報格式…"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh PreToolUse",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/format_on_save.py",
+            "timeout": 90,
+            "statusMessage": "自動 format…"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh PostToolUse",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh UserPromptSubmit",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh Stop",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh Notification",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/report_clause.py",
+            "timeout": 5,
+            "statusMessage": "注入回報條款…"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline-dispatch.sh",
+    "padding": 0
+  },
+  "enabledPlugins": {
+    "gitkraken-hooks@gitkraken": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true
+  },
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark-ansi",
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "remoteControlAtStartup": true,
+  "extraKnownMarketplaces": {
+    "gitkraken": {
+      "source": {
+        "path": "/Users/mike/.claude/plugins/marketplaces/gitkraken",
+        "source": "directory"
+      }
+    }
+  }
 }

@@ -64,6 +64,15 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 - **不要為了讓就緒判準過而放寬它。** 判準過不了代表環境真的沒好。
 - 地端環境的目的是**任何操作都不外溢到真實世界**。發現宣告檔的 `isolation` 漏列了對外連線，或有指向正式服務的開關預設開著，當場回報 Mike。
 
+## prod 資料副本（宣告檔有 `prod_data` 區塊時）
+
+專案若在宣告檔標明 `prod_data`（地端持有生產資料副本），**起棧一律以該副本為 DB**——feature 等級以上或含 migration 的改動，起棧測試就同時是「prod 的下一次啟動」彩排（2026-08-14 兩天部署事故的定則：online 看沒問題 ≠ prod 能上，差的就是資料與環境）。照宣告執行：
+
+- `prod_data.equivalence_cmds`：起棧後逐條執行（如補 GLOBAL sql_mode——容器重啟就失效的環境等價設定）。
+- `prod_data.rehearsal_checks`：就緒後逐項驗證並納入回報（如 migration 全過、健檢告警符合已知清單）。
+- `prod_data.refresh_skill`：副本血統/刷新程序住在該 skill，過期時提示 Mike 刷新。
+- 副本是真實用戶資料：輸出遮罩、不外流。
+
 ## 與 workflow 的關係
 
 改動面含前端時，驗證義務的環境前提就是這個 skill（見 /verify）。降級階梯：

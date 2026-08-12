@@ -69,6 +69,7 @@
   - 要逐個親驗（實作工人）：**5**，隊列積壓就降。
   - 不必逐個親驗（探路／掃描／文件，產出批次驗證）：**8**。
   - 驅動瀏覽器的 agent：**同時 1**（chrome MCP 共用選頁指標；`--experimentalPageIdRouting` 實驗通過前不放寬）。
+- **背景具名工人未動工即死（零 commit、inbox 未讀）同工程累計 ≥2 次 → 視同派工基礎設施異常**：停止再派背景工人，改同步派工或大腦親實作（lane 與 review chain 照舊），不第三次重試（2026-08-14 marksix dedup 案定則）。
 - 工人完成驗收後用 **TaskStop**（吃工人名字）收掉，不走工人自行關閉協議。**盤點與進度不用 TaskList/TaskOutput——對具名工人無效**；盤點讀 `~/.claude/teams/session-<id>/config.json`，進度用 SendMessage 問。
 - done ≠ done：工人回報後大腦必親自抽查 ＋ 親跑可執行證據（步驟在 /verify skill）。
 - 退件回饋迴路：驗收不符或 reviewer 打回 → memory 記一行（任務、原因、歸類）；同類累積成 pattern → 修規則源頭，修完刪記錄。

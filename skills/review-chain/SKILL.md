@@ -21,6 +21,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 - 派 reviewer 的**同一時刻**起 /local-stack，並先驗前端 API 位址指向地端——指向判準與 env 分層查法**唯一依據 /vue-dev「瀏覽器實測」0-1 步**，不在此重抄。
 - 驗完通知 Mike：測試入口＋本次改動的重點路徑清單（brief 實測步驟彙整）。
+- **等 Mike 手測的空檔**：大腦照同一份清單把 /auto-e2e 回放腳本寫好存進 feature worktree——**差異重測先回放，回放紅或新增流程才找 Mike**；Mike 的手只花在第一輪清單外探測。
 - Mike 手測結果與 reviewer 結果**會合**，兩者皆過才收工；Mike 不在 → 手測站等人，不阻塞其他需求開工。
 
 ## Review 對照物（Spec 軸拿什麼審）

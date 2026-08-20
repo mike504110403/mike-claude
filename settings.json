@@ -13,7 +13,6 @@
       "Bash(npm run*)",
       "Bash(npm install*)",
       "Bash(npm ci*)",
-      "Bash(npx vue-tsc*)",
       "Bash(docker compose*)",
       "Bash(docker ps*)",
       "Bash(docker logs*)",
@@ -49,7 +48,14 @@
       "Bash(git merge*)",
       "Bash(git worktree*)",
       "Bash(git fetch*)",
-      "Bash(python3 -m unittest discover tools/imgen*)"
+      "Bash(python3 -m unittest discover tools/imgen*)",
+      "Bash(~/.claude/bin/phase *)",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__list_network_requests",
+      "mcp__chrome-devtools__get_network_request",
+      "mcp__chrome-devtools__list_console_messages",
+      "mcp__chrome-devtools__list_pages"
     ],
     "defaultMode": "bypassPermissions"
   },

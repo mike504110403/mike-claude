@@ -58,6 +58,14 @@ def main():
     if re.search(r"\bgit\s+clean\b", cmd) and re.search(r"\s-\w*[fdxX]", cmd):
         respond("deny", "硬擋：git clean -f/-d/-x 會洗掉未 commit 與 untracked 改動。先 git status 查明，逐一處置。")
 
+    # 硬擋：git stash 變更操作（stash 堆疊跨 worktree 共用；乾淨樹上 push 是 no-op、pop 會彈出別人的 stash——2026-08-12/08-19 三起）
+    if re.search(r"\bgit\s+(-C\s+\S+\s+)?stash\b", cmd) and not re.search(r"\bstash\s+(list|show)\b", cmd):
+        respond("deny", "硬擋：git stash 變更操作被禁止（堆疊跨 worktree 共用，pop 會彈出別人的 WIP）。暫存改動用 cp 備份；取舊版用 git show <ref>:<path>；baseline 比對用 git diff <ref>。")
+
+    # 硬擋：裸 npx（無 node_modules 時靜默抓 registry 新版產出假結果——/vue-dev 禁令）
+    if re.search(r"(^|[;&|]\s*)npx\s", cmd):
+        respond("deny", "硬擋：裸 npx 被禁止——沒裝依賴時會靜默抓 registry 新版產出假結果。改用 pnpm exec <tool> 或 ./node_modules/.bin/<tool>（先確認依賴已依 lock 檔安裝）。")
+
     # 強制詢問：git reset --hard（丟棄工作區與 index）
     if re.search(r"\bgit\s+reset\s+(-\w+\s+)*--hard\b", cmd):
         respond("ask", "警示：git reset --hard 會丟棄未 commit 改動。確定？")

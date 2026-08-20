@@ -20,10 +20,11 @@ description: 彩票群的地端 prod 資料副本——查生產環境資料、l
 
 ## 副本血統(判斷時效用)
 
-- 來源:`slave-wx-prod-rds...ap-east-1.rds.amazonaws.com` 的 `m5_prod`,**2026-08-14 20:54** mysqldump(no-locks 模式,跨表可能有秒級錯位)。
-- **匯出時排除**:分區/備份表 ＋ `crawler_sync_task`、`crawler_sync_member`、`game_recommendations`(此三表已由 migration 在地端重建為**空表**——查 M6 任務/推薦資料時記得地端是空的,要真值連生產)。
-- 76 張表、user_rebate 50,355 列、users 2,472 列;migration ledger 隨副本帶入(=prod 真實帳)。
-- 快照時 prod 已知狀態:GA 自助綁定開關=開、zimu808 停用+佔位密鑰、跨合營商髒帳號 30 筆(裁示:不修資料程式適用)、超額鏈 539 筆。
+- 來源:`slave-wx-prod-rds...ap-east-1.rds.amazonaws.com` 的 `m5_prod`,**2026-08-20 11:59** mysqldump(no-locks 模式,跨表可能有秒級錯位;dump 檔 5.9GB)。
+- **這次是全量匯出**:1,242 張表,含分區/備份表與 `crawler_sync_task`、`crawler_sync_member`、`game_recommendations`(帶真資料,不再是空表)——因此刷新程序第 4 步③的 migration 記錄刪除**這輪不需要**,只有 dump 排除那三表時才做。
+- user_rebate 50,655 列、users 2,489 列;migration ledger 隨副本帶入(匯入時 169 筆=prod 真實帳)。
+- 快照時 prod 已知狀態:GA 自助綁定開關=開、zimu808 停用+佔位密鑰、跨合營商髒帳號(裁示:不修資料程式適用)、超額鏈存在。
+- **superAdmin 密碼是 prod 真密碼**(seed migration 只在帳號不存在時建立,不覆蓋)——地端要用 `168wxadmin888` 登入需手動重設:用 repo 的 `utils.BcryptHash("168wxadmin888")` 產 hash 後 `UPDATE admin SET password=... WHERE username='superAdmin';`(2026-08-20 已做)。GA 未綁(ga_secret 空)不擋登入。
 
 ## 環境等價性(與 prod 的已知差異)
 
@@ -37,7 +38,7 @@ description: 彩票群的地端 prod 資料副本——查生產環境資料、l
 1. Mike 用 DBeaver dump(Local Client=`/opt/homebrew/Cellar/mysql-client/9.7.1`,Execution=Normal no locks)或 `docker run --rm mysql:8.4 mysqldump -h <slave RDS> ...` 出檔到 `~/Documents/kabo/lottery/`。
 2. 停四服務(platform/forever/game-hub-v2/game-core,pid 檔在 `localstack/run/pids/`)。
 3. `DROP DATABASE lottery; CREATE DATABASE lottery DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;` → nohup 脫離式匯入(4.7GB 約 6 分鐘;**不可**用會被 10 分鐘上限砍掉的前景/背景殼)。
-4. **必做善後**:①`SET GLOBAL sql_mode='NO_ENGINE_SUBSTITUTION'`;②**de-fang**:`UPDATE providers SET status=0 WHERE status=1;`(prod 資料帶真第三方商,不關會對外拉單);③匯出排除表的 migration 記錄刪掉讓程式重建:`DELETE FROM migration_record WHERE version IN ('20260709_init_crawler_sync','20260709_add_crawler_sync_task_status_index','20260710_add_crawler_sync_task_fresh','20260813_add_crawler_sync_task_site_id','20260717_add_sync_member_fail_reason','20260810_add_m6_bank_sync','20260709_add_game_recommendations','20260720_add_game_recommendation_interval_group_status');`
+4. **必做善後**:①`SET GLOBAL sql_mode='NO_ENGINE_SUBSTITUTION'`;②**de-fang**:`UPDATE providers SET status=0 WHERE status=1;`(prod 資料帶真第三方商,不關會對外拉單);③**僅當 dump 有排除表時**——匯出排除表的 migration 記錄刪掉讓程式重建(先 grep dump 的 CREATE TABLE 清單確認,全量 dump 跳過此步):`DELETE FROM migration_record WHERE version IN ('20260709_init_crawler_sync','20260709_add_crawler_sync_task_status_index','20260710_add_crawler_sync_task_fresh','20260813_add_crawler_sync_task_site_id','20260717_add_sync_member_fail_reason','20260810_add_m6_bank_sync','20260709_add_game_recommendations','20260720_add_game_recommendation_interval_group_status');`
 5. `localstack/up.sh` 起棧(它會再跑一次 de-fang,冪等)。
 
 ## 其他注意

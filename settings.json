@@ -190,6 +190,7 @@
     "swift-lsp@claude-plugins-official": true
   },
   "effortLevel": "high",
+  "language": "chinese",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark-ansi",

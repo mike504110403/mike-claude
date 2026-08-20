@@ -98,7 +98,8 @@
 
 ### Commit / Push 紀律
 
-- 驗收 / review 通過後 commit，然後**停下**。push 流程（盤點、批次手測、授權、驗證落地）住 /ship。
+- 驗收 / review 通過後 commit，然後**停下**。push 流程（盤點、授權、驗證落地）住 /ship。
+- **一個 /feature 落 dev 恆一顆 commit、訊息精簡**（標題一行、body ≤3 行）——粒度與訊息規則唯一依據 /feature-flow 階段四。
 - **未經 Mike 明確授權，絕不 `git push`**（hook 也會硬攔）。Mike 說「推」之後：push → `git ls-remote` 比對 hash 驗證落地。
 - `dev` 推上 remote 前務必問 Mike；feature 分支不推 remote。分支 / worktree 生命週期一律 /feature-flow。
 

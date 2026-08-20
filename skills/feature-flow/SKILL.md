@@ -35,21 +35,29 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
    git -C <工人worktree> reset --soft $(git -C <工人worktree> merge-base HEAD feature/<需求slug>)
    git -C <工人worktree> commit -m "<type>: <任務描述>"
    ```
-   - 過程 commit 全部壓成一顆，message 由大腦正式撰寫（含 Co-Authored-By 尾綴）；本來就一顆且合格則跳過。
+   - 過程 commit 全部壓成一顆，message 一行從簡即可（階段四整需求壓縮時會重寫）；本來就一顆則跳過。
    - reset --soft 前先 `git -C <工人worktree> status` 確認沒有未 commit 改動混入。
 2. **在 feature worktree（不是主 checkout）合併**：先 `git -C <feature worktree> branch --show-current` 確認站在 feature 分支 → `git -C <feature worktree> merge wt/<需求slug>/<task-slug>`。
    - 衝突依 /resolving-merge-conflicts 逐塊解；解不掉回報 Mike。
 3. 合併成功後**立即清工人 worktree**，三步一組：`worktree remove` → `branch -d` → `worktree prune`。被擋不 force——先查明未 commit 改動或未合併 commit 是什麼再處置。
 
-## 階段四：合併回 dev ＋ 重驗 ＋ 三清（需求全部驗收＋review 通過後）
+## 階段四：壓成一顆 ＋ 合併回 dev ＋ 重驗 ＋ 三清（需求全部驗收＋review 通過後）
 
-1. 在主 checkout：`git -C <主checkout> branch --show-current` 確認是 dev → `git merge --no-ff feature/<需求slug>`。
-2. **合併後重驗**（merge queue 的後半）：dev 自本需求切出以來**前進過**（比對看板「切自 dev hash」）→ 在主 checkout 就地重跑本需求改動面的驗收證據（指令同 /verify 第 4 步）。
-   - 失敗 → **不刪 feature 分支**，revert merge 或掛待修回報；dev 未 push，可安全回退。
+1. **需求壓成一顆**（**一個 /feature 落 dev 恆一顆 commit**，2026-08-20 定則）：先 `git -C <feature worktree> status` 確認無未 commit 改動 → `git -C <feature worktree> reset --soft $(git -C <feature worktree> merge-base HEAD dev)` → `git commit`，訊息依下方精簡規則。
+2. dev 自本需求切出以來**前進過**（比對看板「切自 dev hash」）→ `git -C <feature worktree> rebase dev`（衝突依 /resolving-merge-conflicts；feature 未推 remote，rebase 安全）；沒前進 → 跳過。
+3. 在主 checkout：`git -C <主checkout> branch --show-current` 確認是 dev → `git merge feature/<需求slug>`（此時必為 fast-forward；出現 merge commit 代表前兩步沒做對，停下查）。
+4. **合併後重驗**（merge queue 的後半）：dev 前進過的需求 → 在主 checkout 就地重跑本需求改動面的驗收證據（指令同 /verify 第 4 步）。
+   - 失敗 → **不刪 feature 分支**，`git revert <該顆 commit>` 或掛待修回報；dev 未 push，可安全回退。
    - dev 沒前進過（單需求串行）→ 本步零成本跳過。
-3. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
-4. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）。
-5. 停下。push 與 Mike 批次手測走 **/ship**。
+5. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
+6. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）。
+7. 停下。push 走 **/ship**。
+
+### Commit 訊息精簡規則（dev 上那顆）
+
+- 標題一行 `<type>: <一句話>`，講清楚做了什麼就停——不寫條列清單，改了哪些檔 diff 自己會說。
+- body 至多三行，只寫 diff 看不出來的事（why、風險、Mike 的裁示）；沒有就不寫 body。
+- 尾綴照全域規則帶 Co-Authored-By。
 
 ## 與工人共處（多方同 repo 紀律）
 

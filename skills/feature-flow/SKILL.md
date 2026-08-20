@@ -57,7 +57,7 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
 
 - 標題一行 `<type>: <一句話>`，講清楚做了什麼就停——不寫條列清單，改了哪些檔 diff 自己會說。
 - body 至多三行，只寫 diff 看不出來的事（why、風險、Mike 的裁示）；沒有就不寫 body。
-- 尾綴照全域規則帶 Co-Authored-By。
+- **不帶任何尾綴**（無 Co-Authored-By、無 Claude-Session——settings.json attribution 已全域關閉，Mike 2026-08-20 裁示）。
 
 ## 與工人共處（多方同 repo 紀律）
 

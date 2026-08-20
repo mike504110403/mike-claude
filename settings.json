@@ -191,6 +191,11 @@
   },
   "effortLevel": "high",
   "language": "chinese",
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark-ansi",

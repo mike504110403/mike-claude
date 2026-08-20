@@ -28,12 +28,12 @@ Vue 專案不寫測試檔（Mike 裁示），防線 = typecheck ＋ 瀏覽器實
 
 ## 瀏覽器實測（行為驗證層，2026-08-20 改版）
 
-取代測試檔的行為驗證層，/quick 與 /feature 驗收都適用。**行為驗證主防線＝Mike 地端手測**（review chain 手測並行站，見 /review-chain）；/auto-e2e（大腦 Chrome MCP 代測）與 ui-reviewer 僅 on-demand：
+取代測試檔的行為驗證層，/quick 與 /feature 驗收都適用。**行為驗證主防線＝Mike 地端手測**（review chain 手測並行站，見 /review-chain）；/auto-e2e（Playwright 腳本實測）與 ui-reviewer 僅 on-demand：
 
 0. **環境前提**：需要真後端的頁面（登入、取資料、送出寫入）先用 `/local-stack` 起地端全棧；環境不可得時走該 skill 的降級階梯，並在 wip.md 記一筆驗證債。**不要拿 dev server 預設的 API 位址就開測——多個專案的 `.env` 預設指向正式線上**，在上面按下「送出」是真的在改線上資料。
 1. 起該專案 dev server（背景跑，用專案既有 script），**明確覆蓋 API 位址指向地端**。指向判準＝**經 proxy 的請求得到只有地端才可能的回應**（seed 帳密登入成功、地端獨有資料），頁面 200 什麼都不證明；Vite env 分層（`.env` → `.env.[mode]` → process env）全部查完才能宣告預設值。
 2. brief 的驗收標準要把「走哪些頁面、做哪些操作、預期看到什麼」寫成具體步驟；bug 修復時把重現步驟固化成可重走的驗證步驟（等同回歸測試）。**這份清單就是 Mike 手測站的重點路徑清單**（on-demand 代測也共用同一份）。
-3. **on-demand MCP 代測的證據三件**：**截圖**（改動前後的畫面）、**console 無新增錯誤**、**network 面板該打的 API 有打且回應正常**。**瀏覽器 agent 同時只能 1 個**：chrome-devtools MCP 共用同一個選頁指標，`isolatedContext` 只隔離 cookies/storage，擋不住互踩（實測過下拉選單被別的流程改掉）。要解禁並發，先實驗 `--experimentalPageIdRouting` 通過後改本條。
+3. **on-demand 自動化實測證據**（/auto-e2e，Playwright 腳本）：exit code＋trace＋失敗截圖；console 無新增錯誤與「該打的 API 有打且回應正常」寫成 spec 內斷言。Chrome MCP 僅剩 /bug 互動式診斷用途——動用時瀏覽器 agent 同時僅 1（chrome-devtools MCP 共用選頁指標，`isolatedContext` 擋不住互踩）。
 4. 地端連 online 測試的專案（該專案 CLAUDE.md 的完工流程有標注）沿用既有連線方式，完工後起地端 dev 給 Mike 實測。
 
 ## Package manager

@@ -50,7 +50,7 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
    - 失敗 → **不刪 feature 分支**，`git revert <該顆 commit>` 或掛待修回報；dev 未 push，可安全回退。
    - dev 沒前進過（單需求串行）→ 本步零成本跳過。
 5. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
-6. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）。
+6. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）、刪本需求 e2e spec 目錄（`~/.claude/e2e/specs/<repo>-<需求slug>/`，若有）。
 7. 停下。push 走 **/ship**。
 
 ### Commit 訊息精簡規則（dev 上那顆）

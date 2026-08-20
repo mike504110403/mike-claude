@@ -16,6 +16,11 @@
 !agents/**
 !hooks/
 !hooks/**
+!e2e/
+e2e/*
+!e2e/package.json
+!e2e/package-lock.json
+!e2e/playwright.config.ts
 !bin/
 !bin/**
 # projects/（transcripts 與 memory）一律不進版控（2026-08-07 Mike 裁示：memory 不上 git）

@@ -76,7 +76,7 @@
 - 派工一律加 `name`（「任務-角色」風格）；同時上限按「**大腦要不要逐個親驗**」分（真瓶頸是大腦串行驗收，不是核心數），多的排隊、收一補一：
   - 要逐個親驗（實作工人）：**5**，隊列積壓就降。
   - 不必逐個親驗（探路／掃描／文件，產出批次驗證）：**8**。
-  - 驅動瀏覽器的 agent：**同時 1**（chrome MCP 共用選頁指標；`--experimentalPageIdRouting` 實驗通過前不放寬）。
+  - 動用 chrome MCP 的 agent（僅剩 /bug 互動診斷、點名 ui-reviewer）：**同時 1**（共用選頁指標）；/auto-e2e 已改 Playwright 腳本不受此限。
 - **背景具名工人未動工即死（零 commit、inbox 未讀）同工程累計 ≥2 次 → 視同派工基礎設施異常**：停止再派背景工人，改同步派工或大腦親實作（lane 與 review chain 照舊），不第三次重試（2026-08-14 marksix dedup 案定則）。
 - 工人完成驗收後用 **TaskStop**（吃工人名字）收掉，不走工人自行關閉協議。**盤點與進度不用 TaskList/TaskOutput——對具名工人無效**；盤點讀 `~/.claude/teams/session-<id>/config.json`，進度用 SendMessage 問。
 - done ≠ done：工人回報後大腦必親自抽查 ＋ 親跑可執行證據（步驟在 /verify skill）。

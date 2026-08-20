@@ -20,7 +20,7 @@ description: 診斷 lane：壞了、錯了、變慢且根因未知。先重現�
    - 小修（符合 /quick 入選標準）→ 接 /quick 流程收尾（大腦直改＋自驗）。
    - 中修（符合 /solo 入選標準）→ 接 /solo 流程收尾（大腦直改＋code-reviewer）。
    - 大修 → 轉 /feature（brief 裡帶上診斷段的完整情報）。
-5. 不論走哪條，驗收照所跳 lane 走 /verify；**修完必留回歸測試**（重現步驟固化成測試；Vue 專案為 Chrome DevTools MCP 可重走的驗證步驟）。
+5. 不論走哪條，驗收照所跳 lane 走 /verify；**修完必留回歸測試**（重現步驟固化成測試；Vue 專案固化成 /auto-e2e 的 Playwright spec，可回放）。
 
 ## 跳線
 

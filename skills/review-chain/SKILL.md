@@ -32,7 +32,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 ## 派工紀律
 
-- 觸發表命中的 reviewer **一律同一則訊息一波派完**（多個 Agent 呼叫放同一 block），不逐個等回報；打回修復後重跑全鏈同樣一波派。唯一例外：瀏覽器 agent 同時僅 1（on-demand 的 ui-reviewer／/auto-e2e 與其他瀏覽器工作錯開跑）。
+- 觸發表命中的 reviewer **一律同一則訊息一波派完**（多個 Agent 呼叫放同一 block），不逐個等回報；打回修復後重跑全鏈同樣一波派。唯一例外：動用 Chrome MCP 的 agent（僅剩 /bug 診斷與點名 ui-reviewer）同時僅 1；/auto-e2e 已是 Playwright 腳本，不受此限。
 - reviewer 的 prompt 必帶回報條款（/brief 的 BRAIN-CHECKLIST）：SendMessage 主動送報告、沒發現問題也要回「審了哪些重點項」。
 - reviewer 只讀不改；發現的既有問題照「既有問題不處理」判準，列一行即可。
 - **runtime 行為斷言只能標 PLAUSIBLE**：reviewer 說「這個錯不會影響流程」這類 runtime 行為判斷，推得再細都不得作為放行理由——要 runtime 證據（實跑重現）才算定案（2026-08-06 GA spinner 案教訓）。

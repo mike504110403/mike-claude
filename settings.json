@@ -180,7 +180,6 @@
     "padding": 0
   },
   "enabledPlugins": {
-    "gitkraken-hooks@gitkraken": true,
     "gopls-lsp@claude-plugins-official": true,
     "swift-lsp@claude-plugins-official": true
   },
@@ -190,13 +189,5 @@
   "theme": "dark-ansi",
   "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
-  "remoteControlAtStartup": true,
-  "extraKnownMarketplaces": {
-    "gitkraken": {
-      "source": {
-        "path": "/Users/mike/.claude/plugins/marketplaces/gitkraken",
-        "source": "directory"
-      }
-    }
-  }
+  "remoteControlAtStartup": true
 }

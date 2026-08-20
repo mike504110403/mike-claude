@@ -70,10 +70,11 @@ description: 收斂現在進行中的工程（收回所有工人、盤點落地�
 ## 續作模式（讀檔 → 對帳 → 接手）
 
 1. 讀 `.claude/wip.md`。
-2. **對帳**：逐項驗證 wip.md 記的分支、worktree、commit hash 與現況相符（有波次看板的，逐波驗證分支存在與階段相符）；不符以現況為準，更新 wip.md 再繼續。
-3. 向 Mike 摘要：之前做到哪、下一步是什麼。
-4. 從「下一步」照全域工作流繼續（該討論的先討論、該派工的走 /feature-flow + /brief）。
-5. 工程全部完成後刪除 wip.md（歷史已在 decisions/ 和 git log）。
+2. **撞車檢查（對帳前必做，2026-08-11 兩 session 互踩定則）**：先 ListAgents 查有無 busy 的 peer session；比對 wip.md 記載進度 vs 磁碟實況的**時間線**——實況超前交接檔＝可能有人正在做，先問 Mike 再接手。「幫我看 X」這類措辭在有進行中 session 時優先解讀為「查看回報」而非「接手執行」。
+3. **對帳**：逐項驗證 wip.md 記的分支、worktree、commit hash 與現況相符（有波次看板的，逐波驗證分支存在與階段相符）；不符以現況為準，更新 wip.md 再繼續。
+4. 向 Mike 摘要：之前做到哪、下一步是什麼。
+5. 從「下一步」照全域工作流繼續（該討論的先討論、該派工的走 /feature-flow + /brief）。
+6. 工程全部完成後刪除 wip.md（歷史已在 decisions/ 和 git log）。
 
 ## 禁止事項
 

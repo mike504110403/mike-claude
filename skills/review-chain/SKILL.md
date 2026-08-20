@@ -19,7 +19,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 ## Mike 手測並行站（改動面含前端）
 
-- 派 reviewer 的**同一時刻**起 /local-stack，並先驗前端 API 位址指向地端——判準＝**經 proxy 的請求得到只有地端才可能的回應**（如 seed 帳密登入成功），頁面 200 什麼都不證明；Vite env 分層（`.env` → `.env.[mode]`）全部查完才能宣告預設值。
+- 派 reviewer 的**同一時刻**起 /local-stack，並先驗前端 API 位址指向地端——指向判準與 env 分層查法**唯一依據 /vue-dev「瀏覽器實測」0-1 步**，不在此重抄。
 - 驗完通知 Mike：測試入口＋本次改動的重點路徑清單（brief 實測步驟彙整）。
 - Mike 手測結果與 reviewer 結果**會合**，兩者皆過才收工；Mike 不在 → 手測站等人，不阻塞其他需求開工。
 
@@ -31,7 +31,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 ## 派工紀律
 
-- 觸發表命中的 reviewer **一律同一則訊息一波派完**（多個 Agent 呼叫放同一 block），不逐個等回報；打回修復後重跑全鏈同樣一波派。唯一例外：瀏覽器 agent 同時僅 1——ui-reviewer 與其他瀏覽器工作（/auto-e2e）錯開跑。
+- 觸發表命中的 reviewer **一律同一則訊息一波派完**（多個 Agent 呼叫放同一 block），不逐個等回報；打回修復後重跑全鏈同樣一波派。唯一例外：瀏覽器 agent 同時僅 1（on-demand 的 ui-reviewer／/auto-e2e 與其他瀏覽器工作錯開跑）。
 - reviewer 的 prompt 必帶回報條款（/brief 的 BRAIN-CHECKLIST）：SendMessage 主動送報告、沒發現問題也要回「審了哪些重點項」。
 - reviewer 只讀不改；發現的既有問題照「既有問題不處理」判準，列一行即可。
 - **runtime 行為斷言只能標 PLAUSIBLE**：reviewer 說「這個錯不會影響流程」這類 runtime 行為判斷，推得再細都不得作為放行理由——要 runtime 證據（實跑重現）才算定案（2026-08-06 GA spinner 案教訓）。

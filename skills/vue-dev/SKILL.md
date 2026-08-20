@@ -26,16 +26,15 @@ Vue 專案不寫測試檔（Mike 裁示），防線 = typecheck ＋ 瀏覽器實
 - lint 是驗收標準不是 hook 的事（2026-08-12、08-13 兩犯定案）：brief 驗收標準必含「eslint／stylelint **0 新增 error**（附實際輸出）」；**不得假設 pre-commit hook 會代跑**——已實測兩 repo 的 hook 一個被移除、一個被繞過。lint 工具本身壞掉（如 eslint.config 與版本不相容）→ 回報列為順路發現並在回報明寫「lint 無法執行」，不算通過
 - brief 的驗收標準必須把上述寫成可執行指令；工人回報未附實際輸出視同未完成
 
-## 瀏覽器實測（行為驗證層，2026-08-12 晚批定案）
+## 瀏覽器實測（行為驗證層，2026-08-20 改版）
 
-取代測試檔的行為驗證層，/quick 與 /feature 驗收都適用。**合併回 dev 前的清單內證據由 /auto-e2e 產出**（大腦跑 Chrome MCP）；**Mike 的手動實測在 /ship（push 前批次）走組合態**——唯一清單外探測，不可省略：
+取代測試檔的行為驗證層，/quick 與 /feature 驗收都適用。**行為驗證主防線＝Mike 地端手測**（review chain 手測並行站，見 /review-chain）；/auto-e2e（大腦 Chrome MCP 代測）與 ui-reviewer 僅 on-demand：
 
 0. **環境前提**：需要真後端的頁面（登入、取資料、送出寫入）先用 `/local-stack` 起地端全棧；環境不可得時走該 skill 的降級階梯，並在 wip.md 記一筆驗證債。**不要拿 dev server 預設的 API 位址就開測——多個專案的 `.env` 預設指向正式線上**，在上面按下「送出」是真的在改線上資料。
-1. 起該專案 dev server（背景跑，用專案既有 script），**明確覆蓋 API 位址指向地端**。
-2. brief 的驗收標準要把「走哪些頁面、做哪些操作、預期看到什麼」寫成具體步驟；bug 修復時把重現步驟固化成可重走的驗證步驟（等同回歸測試）。這份清單是 Mike 手動走、/auto-e2e 代測、ui-reviewer 複驗共用的同一份對照物。
-3. **MCP 代測／複驗的證據三件**：**截圖**（改動前後的畫面）、**console 無新增錯誤**、**network 面板該打的 API 有打且回應正常**。**瀏覽器 agent 同時只能 1 個**（含 ui-reviewer 與 /auto-e2e，不可同跑）：chrome-devtools MCP 共用同一個選頁指標，`isolatedContext` 只隔離 cookies/storage，擋不住互踩（實測過下拉選單被別的流程改掉）。要解禁並發，先實驗 `--experimentalPageIdRouting` 通過後改本條。
+1. 起該專案 dev server（背景跑，用專案既有 script），**明確覆蓋 API 位址指向地端**。指向判準＝**經 proxy 的請求得到只有地端才可能的回應**（seed 帳密登入成功、地端獨有資料），頁面 200 什麼都不證明；Vite env 分層（`.env` → `.env.[mode]` → process env）全部查完才能宣告預設值。
+2. brief 的驗收標準要把「走哪些頁面、做哪些操作、預期看到什麼」寫成具體步驟；bug 修復時把重現步驟固化成可重走的驗證步驟（等同回歸測試）。**這份清單就是 Mike 手測站的重點路徑清單**（on-demand 代測也共用同一份）。
+3. **on-demand MCP 代測的證據三件**：**截圖**（改動前後的畫面）、**console 無新增錯誤**、**network 面板該打的 API 有打且回應正常**。**瀏覽器 agent 同時只能 1 個**：chrome-devtools MCP 共用同一個選頁指標，`isolatedContext` 只隔離 cookies/storage，擋不住互踩（實測過下拉選單被別的流程改掉）。要解禁並發，先實驗 `--experimentalPageIdRouting` 通過後改本條。
 4. 地端連 online 測試的專案（該專案 CLAUDE.md 的完工流程有標注）沿用既有連線方式，完工後起地端 dev 給 Mike 實測。
-5. **review chain 複驗**（/feature 適用）：ui-reviewer agent 拿 brief 同一份實測步驟用 Chrome DevTools MCP 走一遍（只測不改），三件證據同上；/auto-e2e 證據與 ui-reviewer 複驗是兩道獨立執行、不可互相替代，Mike 在 /ship 的批次手測是第三道（清單外）。注意瀏覽器 agent 同時僅 1 的限制——兩者錯開跑。
 
 ## Package manager
 

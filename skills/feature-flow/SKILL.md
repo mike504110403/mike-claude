@@ -51,6 +51,14 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
 4. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）。
 5. 停下。push 與 Mike 批次手測走 **/ship**。
 
+## 與工人共處（多方同 repo 紀律）
+
+- **派工前先看該 repo 有沒有未收工的工人**，不是數「這一波派幾個」——前一個沒收工就派下一個同樣是並行，同檔改動會互踩。
+- **大腦要動工人 in-flight worktree 的檔案**：先 SendMessage 宣告「我將動 X」再動手，或等工人 idle——工人視角「檔案憑空消失」會弄壞 build 並動搖它對工作區狀態的信任前提。
+- **多方共用 index 時，裸 `git commit` 是夾帶機**：大腦在工人 worktree staged 過東西後，工人一律 `git commit -- <pathspec>` 部分提交；大腦驗收用 `git show --name-status` 對 commit 訊息聲稱的範圍勾稽。
+- **SendMessage 只進 inbox，長回合工人整場讀不到**（實測：工人自開工到 TaskStop 全程未讀任何一則，同時還在主動發訊息——送與收是兩條路）：中途裁示後工人行為不符，第一假設是沒收到不是抗命；急停不等回應，直接 TaskStop＋大腦親自收斂。契約類內容一律派工當下寫進 brief。
+- **繼承來的未完成工作，第一次驗收通過就先 commit 當基準點**，不等整批做完——否則跨輪複審隔離不出當輪改動，工人只能自報 Edit 內容當證據。
+
 ## 異常路徑
 
 - 暫停／交接 → /wip 收斂：**不做任何清理**，worktree 與分支原樣保留給續作。

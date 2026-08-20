@@ -1,6 +1,6 @@
 ---
 name: auto-e2e
-description: on-demand 瀏覽器自動化實測：Mike 說「自動測」「幫我測」、或 /bug 診斷需要 runtime 重現證據時使用。2026-08-20 起不再是前端驗證的必經閘門（前端驗證改為 review chain 期間 Mike 地端手測）。
+description: on-demand 瀏覽器自動化實測：Mike 說「自動測」「幫我測」、或 /bug 診斷需要 runtime 重現證據時使用。
 ---
 
 # auto-e2e — Chrome MCP 代測

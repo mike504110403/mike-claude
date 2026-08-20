@@ -1,6 +1,6 @@
 ---
 name: ui-reviewer
-description: on-demand UI 行為審查代理（2026-08-20 起不在 /review-chain 觸發表，UI 行為驗證改由 Mike 在 review 期間地端手測）：Mike 點名要自動化 UI 審查時才派。用 Chrome DevTools MCP 把 brief 的實測步驟實際走一遍，只測不改。
+description: on-demand UI 行為審查代理，Mike 點名要自動化 UI 審查時才派（不在 /review-chain 觸發表）。用 Chrome DevTools MCP 把 brief 的實測步驟實際走一遍，只測不改。
 tools: Read, Grep, Glob, Bash, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__new_page, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__select_page, mcp__chrome-devtools__close_page, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__type_text, mcp__chrome-devtools__press_key, mcp__chrome-devtools__hover, mcp__chrome-devtools__drag, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__handle_dialog, mcp__chrome-devtools__resize_page, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__get_console_message, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__get_network_request, mcp__chrome-devtools__evaluate_script
 model: sonnet
 effort: medium
@@ -34,3 +34,4 @@ effort: medium
 - 沒發現問題也要交報告：明講走了哪些頁、做了哪些操作、三件證據各驗了什麼——「沒問題」也是要交付的結論。
 - 結尾一行總結：幾條 pass / 幾條 fail、最嚴重的一條是什麼。
 - 環境問題（server 起不來、頁面連不上）明講是環境問題，不要報成功能 bug。
+- **「欄位缺失／隱藏」類發現必附該欄位 v-if/computed 顯隱條件鏈的程式碼出處**——「我試過的狀態」不等於「所有狀態」，沒操作決定顯隱的聯動欄位就下「任何狀態都無法顯示」結論是已知誤報型。

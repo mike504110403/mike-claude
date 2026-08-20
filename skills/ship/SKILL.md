@@ -1,6 +1,6 @@
 ---
 name: ship
-description: 把本地 dev 的累積成果推上 remote 的收尾流程：盤點 → 授權 → push → ls-remote 驗證。Mike 說「推」「上線」「ship」時使用。（Mike 的手動實測已移至各需求 review chain 的手測並行站，2026-08-20 起）
+description: 把本地 dev 的累積成果推上 remote 的收尾流程：盤點 → 授權 → push → ls-remote 驗證。Mike 說「推」「上線」「ship」時使用。
 ---
 
 # /ship — push 前批次收尾

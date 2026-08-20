@@ -1,11 +1,11 @@
 ---
 name: auto-e2e
-description: 大腦用 Chrome DevTools MCP 產出瀏覽器實測／聯測證據。改動面含前端的需求在合併回 dev 前的標準證據產生器（依全域矩陣自動觸發）；Mike 說「自動測」「幫我測」時也直接使用。
+description: on-demand 瀏覽器自動化實測：Mike 說「自動測」「幫我測」、或 /bug 診斷需要 runtime 重現證據時使用。2026-08-20 起不再是前端驗證的必經閘門（前端驗證改為 review chain 期間 Mike 地端手測）。
 ---
 
 # auto-e2e — Chrome MCP 代測
 
-合併回 dev 前的**驗收證據產生器**（清單內證據）：大腦親自用 Chrome DevTools MCP 把關鍵流程走一遍，留下可抽查的證據。不取代 ui-reviewer（review chain 照 /review-chain 觸發表跑），也不取代 Mike 在 /ship 的批次手測（清單外探測）。瀏覽器 agent 同時僅 1——與 ui-reviewer 錯開跑。
+**on-demand 證據產生器**（2026-08-20 起不在任何驗證站的必經清單）：大腦親自用 Chrome DevTools MCP 把關鍵流程走一遍，留下可抽查的證據。用於 Mike 點名代測、/bug 的 runtime 重現（runtime 行為斷言只有 runtime 證據能定案）。瀏覽器 agent 同時僅 1。
 
 ## 步驟
 

@@ -18,10 +18,13 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 - 符合任一：`跨服務`、`涉及金流`、`不可逆操作`、`全域配置`、`範圍明顯大於直覺` → 先提 **A/B 兩方案**（各含取捨與風險）給 Mike 選，等點頭才動工。
 - 新專案 / 新需求第一次動工前：與 Mike 討論需求與寫法，結論落檔專案 `CLAUDE.md`；重大決策依三條件（難回頭、不看脈絡會奇怪、真有取捨）補 ADR（新專案 `docs/adr/` Matt 格式；有 `.claude/decisions/` 的舊專案沿用原路徑與四段格式）。
 - 已有共識 → 明講「共識已存在（出處），跳過討論」直接動工。
+- **邊界卡（每個 /feature 必出，2026-08-20 起）**：需求對齊的交付物是一張 ≤5 行的卡給 Mike 點頭：`目標（一句話）／改動面（repo×層）／非目標（含 ledger 既有雷處置）／影響面（每條標已驗＋證據 or 待驗）／待裁示`。**點頭＝邊界鎖定**——之後任何超出卡面的範圍變動都回來重議，不得默默吸收。影響面欄只放已驗事實（全域「影響面證據卡」不變式）；非目標欄先讀 `~/.claude/ledgers/<repo>.md` 把相關既有雷列入。A/B 方案觸發時，方案附在卡下一起給。
 
 ### 2. 拆任務 ＋ 派工
 
 - 每個子任務用 /brief 八欄模板寫自足 brief；seam 沒議定不派工。
+- **拆分粒度（2026-08-20 起）**：盡可能拆細——一個工人一個單一意圖的小切片（一個 seam），壓低每個 agent 的 context、讓它只看得到自己的事。細拆的下限是**切工硬規則：共用元件／檔案與其全部消費者必須劃給同一個工人**（拆開會讓 reviewer 只見半成品、報幻影問題——返點案四次實證）；做不到同工人時，reviewer 的 prompt 必須明寫「另一半在別的 worktree，以下項目不要報」。
+- **每份 brief 派工前先過 brief-reviewer**（agent 檔，打回先修再派）：對照物＝邊界卡（/mega 另加 spec 檔）＋派工基準分支的 repo 實況。brief-reviewer 通過才派工人。
 - 分支與 worktree 一律走 /feature-flow（先 /sync-dev）。
 - 具名工人 `run_in_background: true` 平行派工；命名、單波上限、模型選配依全域不變式。
 
@@ -33,12 +36,12 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 ### 4. Review chain（驗收通過後）
 
-一律走 **/review-chain**（觸發表、對照物 = brief、打回重跑全鏈、通過 TaskStop 收工）。
+一律走 **/review-chain**（觸發表、對照物 = brief、按嚴重度分層重跑、通過 TaskStop 收工）。**改動面含前端** → 派 reviewer 的同一時刻起 /local-stack 讓 Mike 並行手測（站點細節在 /review-chain）。
 
 ### 5. 收尾
 
 - 合併依 /feature-flow 階段三、四（階段四含合併後重驗與三清）。
-- **改動面含前端**：合併回 dev 前的瀏覽器實測／聯測證據由 **/auto-e2e** 產出（依全域矩陣；/local-stack 起地端棧、API 位址確認指向地端）；**Mike 的手動實測移至 /ship（push 前批次）**——唯一清單外探測，不可省。API 合約以 bruno collection 為對照（有 bruno/ 的專案先 /bruno-sync 增量同步再驗）。
+- **改動面含前端**：合併回 dev 的前提是 review chain 的「Mike 手測並行站」已過（依全域矩陣；/auto-e2e 僅 on-demand，用於 Mike 點名代測或 /bug runtime 重現）。API 合約以 bruno collection 為對照（有 bruno/ 的專案先 /bruno-sync 增量同步再驗）。
 - commit 後停下；push 走 /ship。
 
 ## 領域插件

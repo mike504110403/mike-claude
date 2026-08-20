@@ -9,12 +9,19 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 本表是 reviewer 觸發的**唯一 source**；模型選配唯一依據全域「角色 × 模型矩陣」，不在此重抄。
 
-| Reviewer          | 觸發                                                                          |
-| ----------------- | ----------------------------------------------------------------------------- |
-| code-reviewer     | 每次都跑                                                                      |
-| ui-reviewer       | 改動面含前端——拿 brief（或任務描述）的實測步驟用 Chrome DevTools MCP 重走一遍 |
-| security-reviewer | 金流 / 付款 / 認證授權 / secrets                                              |
-| db-reviewer       | DB schema / migration                                                         |
+| Reviewer          | 觸發                             |
+| ----------------- | -------------------------------- |
+| code-reviewer     | 每次都跑                         |
+| security-reviewer | 金流 / 付款 / 認證授權 / secrets |
+| db-reviewer       | DB schema / migration            |
+
+（ui-reviewer 已移出觸發表（2026-08-20 起），僅 Mike 點名時 on-demand 派；UI 行為驗證由下方「Mike 手測並行站」取代。）
+
+## Mike 手測並行站（改動面含前端）
+
+- 派 reviewer 的**同一時刻**起 /local-stack，並先驗前端 API 位址指向地端——判準＝**經 proxy 的請求得到只有地端才可能的回應**（如 seed 帳密登入成功），頁面 200 什麼都不證明；Vite env 分層（`.env` → `.env.[mode]`）全部查完才能宣告預設值。
+- 驗完通知 Mike：測試入口＋本次改動的重點路徑清單（brief 實測步驟彙整）。
+- Mike 手測結果與 reviewer 結果**會合**，兩者皆過才收工；Mike 不在 → 手測站等人，不阻塞其他需求開工。
 
 ## Review 對照物（Spec 軸拿什麼審）
 
@@ -31,5 +38,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 ## 打回與收工
 
-- 任一 reviewer 打回 → 退回修復（重派或直改，依 lane）→ 修完**重跑整條觸發鏈**，不只重跑打回的那個。
-- 全數通過 → 該工人 **TaskStop** 收掉（派工 lane）；記退件依全域迴饋迴路。
+- 任一 reviewer 打回 → 退回修復（重派或直改，依 lane）。修復輪指令紀律：帶測試的 major 一律要求附雙向變異輸出（移除修復→紅）；reviewer 的 MINOR 備註若指向輸入空間缺口或 30 秒可查證的邊界值，當場升級成明確要求，不放行帶病合併。
+- **重跑範圍按嚴重度分層（2026-08-20 起）**：修的含 **MAJOR/BLOCKER** → 修完重跑**整條觸發鏈**（修復輪是新錯高發區，退件 log 實證：重構蒸發防護、修復再收 5 MAJOR）；修的**只有 MINOR** → 只重跑打回的那隻確認修復。
+- **Mike 手測的差異重測**：修復含 MAJOR/BLOCKER 且碰前端檔 → 給 Mike「只需重測這幾條路徑」的差異清單＋該 fix 的 `git diff --stat`（檔名讓 Mike 可自行覆核大腦的判斷）；只修 MINOR 或純後端修復 → 不回頭找 Mike，沿用原手測結果。
+- 全數通過（含手測站）→ 該工人 **TaskStop** 收掉（派工 lane）；記退件依全域迴饋迴路。

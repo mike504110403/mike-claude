@@ -15,13 +15,15 @@ description: 大工程 lane：一波（≤5 工人）派不完、或有未決技
 ### 1. 探路段（決策先於實作）
 
 - 把「要決定的事」列成 **decision 清單**：每項是一個問題，不是一個實作。
-- 逐項用 討論（/office-hours、/grilling）/ 研究（/research，發現落檔 repo）/ 原型（/prototype，一次性驗證後即棄）解掉。
+- 逐項用 討論（/office-hours、**/grilling——mega 必經**，把需求與每個決策烤到共識）/ 研究（/research，發現落檔 repo）/ 原型（/prototype，一次性驗證後即棄）解掉。
 - **戰爭迷霧**：講不精確的問題不硬切，掛「尚未明朗」清單，等前面的決策解開再切。判斷標準是「問題能不能講得精確」，不是「現在能不能回答」。
 - 決策結果依三條件落 ADR（新專案 `docs/adr/` Matt 格式；舊專案沿用 `.claude/decisions/`）。
+- **Spec 定稿（拆波前的硬閘門，2026-08-20 起）**：全部決策解完後，把結論寫成 spec 檔落在專案 `docs/specs/<slug>.md`（隨 feature 分支 commit）：目標／範圍／非目標／行為規格／驗收總表／已決策清單（引 ADR）。**之後一切依 spec 開發**：邊界卡引用它、每波 brief 從它切片、brief-reviewer 拿它當上游對照物、跨 session 續作先讀它——大工程對抗長 session 的 ctx 漂移與幻覺，**靠檔案不靠記憶**。spec 改版要 Mike 點頭並記版次；波中發現 spec 錯 → 停波修 spec 再續，不得邊做邊改。
 
 ### 2. 拆波段
 
-- 全部決策解完、實作路線清楚 → 拆成多個 /feature 波次，每波獨立走 /feature lane 全流程（brief → 派工 → 驗收 → review chain）。
+- spec 定稿、實作路線清楚 → 拆成多個 /feature 波次，每波獨立走 /feature lane 全流程（brief 從 spec 切片 → brief-reviewer → 派工 → 驗收 → review chain）。
+- **拆分粒度**：波內任務盡可能拆細——一工人一單一意圖小切片，壓低每個 agent 的 context、讓它只聚焦自己那片；下限是下一條共用檔案硬規則。
 - **拆波時每波標注依賴**：「依賴波 X」或「獨立」。判準除了邏輯依賴，還有一條硬規則：**兩波會碰同一個共用檔案就不算獨立**（共用元件與其消費者拆開會讓 reviewer 報幻影問題，跨波同理）。
 - 每波回報帶進度重述：「N 波完成 M，下一步：X」。
 

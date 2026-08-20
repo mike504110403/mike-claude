@@ -40,6 +40,8 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 ## 打回與收工
 
 - 任一 reviewer 打回 → 退回修復（重派或直改，依 lane）。修復輪指令紀律：帶測試的 major 一律要求附雙向變異輸出（移除修復→紅）；reviewer 的 MINOR 備註若指向輸入空間缺口或 30 秒可查證的邊界值，當場升級成明確要求，不放行帶病合併。
+- **修復輪跨軸指派**：發給每個 reviewer 的複確認訊息附**全部指派項清單**（標明各項屬哪軸、由誰確認）——只給單軸自己的條目會造成資訊差誤報 scope creep。
+- **重審與複確認一律 SendMessage 原 reviewer 續聊**（context 已熱、免全量重讀 repo）；原 reviewer 已收掉才開新 agent。
 - **重跑範圍按嚴重度分層（2026-08-20 起）**：修的含 **MAJOR/BLOCKER** → 修完重跑**整條觸發鏈**（修復輪是新錯高發區，退件 log 實證：重構蒸發防護、修復再收 5 MAJOR）；修的**只有 MINOR** → 只重跑打回的那隻確認修復。
 - **Mike 手測的差異重測**：修復含 MAJOR/BLOCKER 且碰前端檔 → 給 Mike「只需重測這幾條路徑」的差異清單＋該 fix 的 `git diff --stat`（檔名讓 Mike 可自行覆核大腦的判斷）；只修 MINOR 或純後端修復 → 不回頭找 Mike，沿用原手測結果。
 - 全數通過（含手測站）→ 該工人 **TaskStop** 收掉（派工 lane）；記退件依全域迴饋迴路。

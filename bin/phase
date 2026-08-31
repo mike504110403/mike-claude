@@ -1,14 +1,26 @@
 #!/bin/bash
-# 工作流階段檔：跟著 tmux session 走（~/.claude/phases/<session名>）
+# 工作流階段檔：跟著 claude session 走（~/.claude/phases/<CLAUDE_CODE_SESSION_ID>）
+# 顯示端在 ~/.claude/statusline-dispatch.sh（statusline 刷新時附加 phase 段）
 # 用法：
-#   phase set 'feature brief▸派工▸[驗收]▸review▸commit'   # 在 Claude 所在 pane 內執行
+#   phase set 'feature brief▸派工▸[驗收]▸review▸commit'   # 在 claude session 內執行
 #   phase clear                                            # lane 收尾刪檔
-#   phase show [session名]                                 # tmux 狀態列用（#S 由 tmux 先展開傳入）
+#   phase show [session_id]                                # statusline 用（stdin JSON 的 session_id 傳入）
 dir="$HOME/.claude/phases"
 
 key_for() {
   if [ -n "$1" ]; then printf '%s' "$1"
-  else tmux display-message -p '#S' 2>/dev/null || printf 'default'
+  elif [ -n "$CLAUDE_CODE_SESSION_ID" ]; then printf '%s' "$CLAUDE_CODE_SESSION_ID"
+  else printf 'default'
+  fi
+}
+
+# cmux 內同步 workspace 狀態徽章（sidebar 可見）；非 cmux 環境靜默跳過
+cmux_sync() {
+  [ -n "$CMUX_BUNDLED_CLI_PATH" ] && [ -x "$CMUX_BUNDLED_CLI_PATH" ] || return 0
+  if [ "$1" = set ]; then
+    "$CMUX_BUNDLED_CLI_PATH" set-status phase "$2" --color '#ffc777' >/dev/null 2>&1
+  else
+    "$CMUX_BUNDLED_CLI_PATH" clear-status phase >/dev/null 2>&1
   fi
 }
 
@@ -16,9 +28,11 @@ case "$1" in
   set)
     mkdir -p "$dir"
     printf '%s\n' "$2" > "$dir/$(key_for)"
+    cmux_sync set "$2"
     ;;
   clear)
     rm -f "$dir/$(key_for)"
+    cmux_sync clear
     ;;
   show)
     f="$dir/$(key_for "$2")"
@@ -28,7 +42,7 @@ case "$1" in
     [ "$age" -lt 21600 ] && head -1 "$f"
     ;;
   *)
-    echo "usage: phase set '<text>' | clear | show [session]" >&2
+    echo "usage: phase set '<text>' | clear | show [session_id]" >&2
     exit 1
     ;;
 esac

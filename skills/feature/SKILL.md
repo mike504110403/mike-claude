@@ -24,8 +24,7 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 - 每個子任務用 /brief 八欄模板寫自足 brief；seam 沒議定不派工。
 - **拆分粒度（2026-08-20 起）**：盡可能拆細——一個工人一個單一意圖的小切片（一個 seam），壓低每個 agent 的 context、讓它只看得到自己的事。細拆的下限是**切工硬規則：共用元件／檔案與其全部消費者必須劃給同一個工人**（拆開會讓 reviewer 只見半成品、報幻影問題——返點案四次實證）；做不到同工人時，reviewer 的 prompt 必須明寫「另一半在別的 worktree，以下項目不要報」。
-- **每份 brief 派工前先過 brief-reviewer**（agent 檔，打回先修再派；重審用 SendMessage 原 reviewer 續聊）：對照物＝邊界卡（/mega 另加 spec 檔）＋派工基準分支的 repo 實況。brief-reviewer 通過才派工人。
-  - **影子並行觸發條件**（未達前維持上述串行）：量錶顯示「brief 首輪無 blocker」連續 ≥5 份成常態後，改為 brief 寫完**同時**派工人與 brief-reviewer——reviewer 乾淨＝零新增 wall-clock；報 blocker＝立刻停工人、修 brief 重派（打回的工人 token 是此模式的已知代價）。
+- **brief 寫完直接派工**（2026-08-24 起移除 brief-reviewer 閘門——耗時＞攔錯收益）：前提是邊界卡已給 Mike 點頭；派工前防線只剩 BRAIN-CHECKLIST 自檢（/brief），事實斷言照舊動筆前開檔驗。brief-reviewer agent 檔保留，僅 Mike 點名時 on-demand 使用。
 - **派工前環境前提親驗**：brief 工作環境欄引用的環境事實（DB／容器／服務位址）派工當下驗一次——環境狀態要驗不要記；前提已失效就先修環境或改 brief，別讓工人自行起 infra。
 - 分支與 worktree 一律走 /feature-flow（先 /sync-dev）。
 - 具名工人 `run_in_background: true` 平行派工；命名、單波上限、模型選配依全域不變式。

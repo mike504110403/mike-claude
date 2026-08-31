@@ -76,8 +76,13 @@
 - 派工一律加 `name`（「任務-角色」風格）；同時上限按「**大腦要不要逐個親驗**」分（真瓶頸是大腦串行驗收，不是核心數），多的排隊、收一補一：
   - 要逐個親驗（實作工人）：**5**，隊列積壓就降。
   - 不必逐個親驗（探路／掃描／文件，產出批次驗證）：**8**。
-  - 動用 chrome MCP 的 agent（僅剩 /bug 互動診斷、點名 ui-reviewer）：**同時 1**（共用選頁指標）；/auto-e2e 已改 Playwright 腳本不受此限。
+  - 動用 chrome-devtools MCP 的 agent（僅剩效能診斷：trace／lighthouse／heap）：**同時 1**（共用選頁指標）。ui-reviewer 與 /bug 互動診斷已改 playwright-cli 具名 session（2026-08-27）、/auto-e2e 是 Playwright 腳本，皆不受此限。
 - **背景具名工人未動工即死（零 commit、inbox 未讀）同工程累計 ≥2 次 → 視同派工基礎設施異常**：停止再派背景工人，改同步派工或大腦親實作（lane 與 review chain 照舊），不第三次重試（2026-08-14 marksix dedup 案定則）。
+- **cmux pane 佈局紀律（2026-08-31，本節是佈局的唯一 source）**：每次開／關 teammate 或瀏覽器 pane 後跑一輪整理，指令全用 `"$CMUX_BUNDLED_CLI_PATH"`，非 cmux 環境跳過。**幾何事實一律取自 `list-panes --json` 的 `pixel_frame`**（x/y/寬/高；`tree` 順序≠畫面順序，不可依賴）。目標佈局：主 pane 佔容器寬約 6 成；瀏覽器 pane 在右欄最上、高佔右欄一半；agent pane 在其下。順序固定：
+  1. **瀏覽器 pane 就位右欄最上**：若瀏覽器不在右欄最上（pixel_frame 同 x 群裡 y 最小者），先 `move-surface --surface <瀏覽器surface> --pane <右欄最上pane> --focus false` 搬進該 pane 當 tab，再 `split-off --surface <瀏覽器surface> up --focus false` 拆成其上方的獨立 pane（`placement=reuse` 的情況同此流程）。**絕不用 swap-pane 動到 teammate pane**——teammate 收工自動關 pane 按 pane ref 記帳，swap 過的 pane 會關錯對象（2026-08-31 演練實證：關掉瀏覽器、留下工人殼）。
+  2. **尺寸調整（回饋迭代）**：`resize-pane --pane X -D/-U/-L/-R --amount <px>`＝把 X 的該側邊界移動 amount 像素，但引擎會按比例重分配鄰居、被壓到最小高度的 pane 行為不可預測——**所以一律「調一步 → 重讀 pixel_frame → 算差值再調」，誤差 ±10% 內即收手，最多 3 輪**。先調瀏覽器高度（目標＝右欄一半），再調主 pane 寬（`identify | jq -r .caller.pane_ref` 取 ref，目標≈容器 6 成），最後粗略均分下方 agent pane。
+  3. **焦點拉回主 pane**：`focus-pane --pane <主pane>`——teammate／瀏覽器開關都會搶焦點且無持久設定可關（schema 查過），一律以這步收尾；開瀏覽器 tab／pane 一律帶 `--focus false`。
+  4. **pane 生命週期**：teammate 用 TaskStop 收掉時 pane 自動關（已驗），不用手動清；大腦自己開的瀏覽器／split pane 不會自動關，任務收尾時 `close-surface` 逐一清掉，清完焦點照舊拉回主 pane。
 - 工人完成驗收後用 **TaskStop**（吃工人名字）收掉，不走工人自行關閉協議。**盤點與進度不用 TaskList/TaskOutput——對具名工人無效**；盤點讀 `~/.claude/teams/session-<id>/config.json`，進度用 SendMessage 問。
 - done ≠ done：工人回報後大腦必親自抽查 ＋ 親跑可執行證據（步驟在 /verify skill）。
 - 退件回饋迴路：驗收不符或 reviewer 打回 → memory 記一行（任務、原因、歸類）；同類累積成 pattern → 修規則源頭，修完刪記錄。
@@ -98,13 +103,14 @@
 5. **語言**：繁體中文；技術名詞／指令／API 名保留英文原文。
 6. **裁決題與權限確認**：永遠附建議答案＋一句理由，且必附**後果對照**——每個選項（含「同意／不同意」）各用白話一句講清楚「選這個會發生什麼、不選會怎樣」；不開放式拋回、不丟裸問題。
 
-### 階段顯示（tmux 狀態列同步）
+### 階段顯示（statusline 同步，2026-08-31 起脫離 tmux）
 
 - 進有階段性的 lane（/solo、/feature、/bug、/mega）時宣告階段：
   `~/.claude/bin/phase set 'feature brief▸派工▸[驗收]▸review▸commit'`
   （單行、`▸` 串接全部階段、當前階段用 `[]` 框、開頭放 lane 名）
 - 每次階段轉換重新 `phase set` 更新括號位置；lane 收尾（commit 完）`~/.claude/bin/phase clear`。
-- 檔案跟著 tmux session 走（`~/.claude/phases/<session名>`），tmux 狀態列每 5 秒自動刷新；超過 6 小時未更新自動隱藏。
+- 檔案跟著 claude session 走（`~/.claude/phases/<session_id>`），statusline 刷新時由 `statusline-dispatch.sh` 自動附加顯示（切哪條 statusline 都有效）；超過 6 小時未更新自動隱藏。
+- cmux 內 `phase set`/`clear` 會自動同步 workspace 狀態徽章（`set-status phase`，sidebar 可見），兩處顯示、腳本內建、不需另外操作（2026-08-31 起）。
 
 ### Commit / Push 紀律
 
@@ -116,6 +122,20 @@
 ### API collection
 
 - 改動涉及 API 且專案已有 `bruno/` → 收尾自動 /bruno-sync；沒有 `bruno/` 時不自動，初次匯入由 Mike 手動啟動。
+
+### Browser 自動化工具鏈（2026-08-27 起）
+
+本節是瀏覽器工具選擇的**唯一 source**：ui-reviewer、/auto-e2e、/bug、/verify、/local-stack 只引用不重抄。三件自動化工具：**playwright-cli**（shell 指令、低 token、具名 session 可並行）、**Playwright MCP**（accessibility snapshot，探索用）、**chrome-devtools MCP**（僅剩效能診斷：performance trace／lighthouse／heap snapshot）；另有一件**展示窗口**：**cmux 內嵌瀏覽器**（見末條，給 Mike 看與手測用，不是 agent 自動化驅動工具）。
+
+- **預設用 playwright-cli**：流程已知、要寫成可重跑的 test、CI 會執行、單純跑一次表單/頁面驗證。token 開銷低，優先選這個。
+- **改用 Playwright MCP**：不確定頁面結構、要來回試探元素、需要完整 accessibility tree 做 self-healing 或跨步驟 diff 比對時再切換。探索完、流程確定後，把步驟收斂回 playwright-cli script 或 Playwright Test，不要讓探索用的 MCP session 變成長期跑的東西。
+- 判斷不出屬於哪一種時，先用 playwright-cli 的 snapshot 看一次結構，真的需要更豐富的即時推理再切 MCP，不要一開始就預設用 MCP。
+- 涉及測試帳號/登入 session：一律用獨立測試帳號的 storage state（`state-save`／`state-load`），不要用 persistent profile 裡殘留的登入狀態。
+- 多 agent 並行各用具名 session（`playwright-cli -s=<agent名>`），不共用預設 session。
+- **cmux 內嵌瀏覽器（2026-08-31 起）**：定位＝**給 Mike 看與手測的窗口**，自動化照舊走上面三件。觸發時機：/local-stack 起棧就緒後、/auto-e2e 開跑前，自動把地端前端 URL 開進 cmux；Mike 地端手測入口一律用它，不叫 Mike 自己開瀏覽器。開法按頁數：
+  - 第一頁：`"$CMUX_BUNDLED_CLI_PATH" browser open <url>`（開瀏覽器 split pane，記下回傳的 `pane=<ref>`）。
+  - 第二頁起：`"$CMUX_BUNDLED_CLI_PATH" new-surface --type browser --pane <ref> --url <url> --focus false`（同一 pane 加 tab，不再切新 pane）。
+  - 非 cmux 環境（無 `$CMUX_BUNDLED_CLI_PATH`）跳過、退回回報 URL。
 
 ### Hooks 全程防護（自動生效，不需你操作）
 

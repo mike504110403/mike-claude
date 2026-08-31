@@ -1,7 +1,7 @@
 ---
 name: ui-reviewer
-description: on-demand UI 行為審查代理，Mike 點名要自動化 UI 審查時才派（不在 /review-chain 觸發表）。用 Chrome DevTools MCP 把 brief 的實測步驟實際走一遍，只測不改。
-tools: Read, Grep, Glob, Bash, mcp__chrome-devtools__navigate_page, mcp__chrome-devtools__new_page, mcp__chrome-devtools__list_pages, mcp__chrome-devtools__select_page, mcp__chrome-devtools__close_page, mcp__chrome-devtools__take_screenshot, mcp__chrome-devtools__take_snapshot, mcp__chrome-devtools__click, mcp__chrome-devtools__fill, mcp__chrome-devtools__fill_form, mcp__chrome-devtools__type_text, mcp__chrome-devtools__press_key, mcp__chrome-devtools__hover, mcp__chrome-devtools__drag, mcp__chrome-devtools__wait_for, mcp__chrome-devtools__handle_dialog, mcp__chrome-devtools__resize_page, mcp__chrome-devtools__list_console_messages, mcp__chrome-devtools__get_console_message, mcp__chrome-devtools__list_network_requests, mcp__chrome-devtools__get_network_request, mcp__chrome-devtools__evaluate_script
+description: on-demand UI 行為審查代理，Mike 點名要自動化 UI 審查時才派（不在 /review-chain 觸發表）。用 playwright-cli 把 brief 的實測步驟實際走一遍，只測不改。
+tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium
 ---
@@ -15,13 +15,15 @@ effort: medium
 
 ## 實測（依 /vue-dev 的三件證據）
 
+工具＝**playwright-cli**（shell 指令，工具選擇唯一依據全域 CLAUDE.md「Browser 自動化工具鏈」）。全程用自己的具名 session：`playwright-cli -s=<你的agent名> <指令>`，不用預設 session。登入用大腦提供的測試帳號 storage state（`state-load`），不用 persistent profile 殘留的登入態。收工 `close` 收掉自己的 session。
+
 對 brief 的每條實測步驟：
 
-1. 用 Chrome DevTools MCP 開頁面，**實際操作**（點擊、填表、送出），不是只看畫面有沒有 render。
+1. `goto` 開頁面後 `snapshot` 取元素 ref，**實際操作**（`click`／`fill`／`select` 點擊、填表、送出），不是只看畫面有沒有 render。ref 拿不到或 snapshot 判讀不了就如實回報，不腦補 selector。
 2. 三件證據逐一收：
-   - **截圖**：每條步驟的關鍵狀態（操作前、操作後、錯誤態）。
-   - **console**：操作全程無新增錯誤；有錯誤逐條列出訊息與觸發步驟。
-   - **network**：該打的 API 有打、payload 與回應正常；不該打的（重複請求、打錯環境）也要報。
+   - **截圖**（`screenshot`）：每條步驟的關鍵狀態（操作前、操作後、錯誤態）。
+   - **console**（`console`）：操作全程無新增錯誤；有錯誤逐條列出訊息與觸發步驟。
+   - **network**（`requests`＋`request <n>` 看細節）：該打的 API 有打、payload 與回應正常；不該打的（重複請求、打錯環境）也要報。
 3. 失敗路徑至少驗一條：操作失敗時 loading 有解除、錯誤有浮出（對照 brief 紀律的非同步失敗路徑要求）。
 4. 受影響頁面之外，抽走一條鄰近路徑確認沒被波及（改列表頁就順走詳情頁一次）。
 

@@ -1,0 +1,27 @@
+#!/bin/sh
+# cmux automation.claudeBinaryPath 指向這裡：
+# 讓 UI agent panel 啟動的 claude 也走 cmux claude-teams（teammate 原生 split pane），
+# 與 ~/.zshrc 的 claude() 函數同邏輯。非互動（無 TTY）或非 cmux 環境走真 claude。
+#
+# 斷環（2026-08-31 修）：cmux 終端 PATH 的 claude shim → cmux-claude-wrapper 的
+# find_real_claude() 會讀 claudeBinaryPath（CMUX_CUSTOM_CLAUDE_PATH）指回本檔，
+# claude-teams 再用 PATH 解析 claude 又踩 shim → 無限 exec 迴圈（100% CPU、畫面空白）。
+# 雙保險：(1) HOP 環境變數標記已進過 claude-teams；(2) 參數含 --teammate-mode
+# 即代表本次呼叫來自 claude-teams 注入，不依賴 env 穿透也能斷環。
+REAL_CLAUDE="$HOME/.nvm/versions/node/v20.20.0/bin/claude"
+
+if [ -n "$CMUX_CLAUDE_LAUNCHER_HOP" ]; then
+  exec "$REAL_CLAUDE" "$@"
+fi
+for arg in "$@"; do
+  if [ "$arg" = "--teammate-mode" ]; then
+    exec "$REAL_CLAUDE" "$@"
+  fi
+done
+
+if [ -t 1 ] && [ -n "$CMUX_PANEL_ID" ]; then
+  CMUX_CLAUDE_LAUNCHER_HOP=1
+  export CMUX_CLAUDE_LAUNCHER_HOP
+  exec "${CMUX_BUNDLED_CLI_PATH:-cmux}" claude-teams "$@"
+fi
+exec "$REAL_CLAUDE" "$@"

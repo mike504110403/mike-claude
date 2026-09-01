@@ -129,6 +129,17 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "TaskStop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.claude/hooks/cmux_pane_cleanup.sh\"",
+            "timeout": 20,
+            "statusMessage": "盤點/清理 cmux 殘留 pane"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [

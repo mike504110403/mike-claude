@@ -1,0 +1,81 @@
+#!/bin/bash
+# mutate — /verify 變異抽查的一鍵循環：備份 → 套變異 → 印 diff → 跑測試 → 還原 → 回報
+#
+# 用法：
+#   mutate --file <目標檔> --sed '<sed 替換式>' --test '<測試指令>' [--cwd <目錄>]
+#   mutate --file <目標檔> --patch <patch檔>   --test '<測試指令>' [--cwd <目錄>]
+#
+# 設計約束（來自 verify/SKILL.md 與 rejection-log 實證）：
+# - 還原一律用 cp 備份檔覆蓋，絕不 git checkout --（會洗掉未 commit 改動，踩過兩次）
+# - 套完變異必印 diff：diff 為空＝變異沒套上（sed 沒匹配／只匹配到註解），直接判 FAIL
+# - 期望結果：測試「紅」＝防護有效；測試「綠」＝假防護，該防線抓不到這個變異
+set -u
+
+FILE="" SED_EXPR="" PATCH="" TEST_CMD="" CWD="$(pwd)"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file)  FILE="$2"; shift 2 ;;
+    --sed)   SED_EXPR="$2"; shift 2 ;;
+    --patch) PATCH="$2"; shift 2 ;;
+    --test)  TEST_CMD="$2"; shift 2 ;;
+    --cwd)   CWD="$2"; shift 2 ;;
+    *) echo "未知參數: $1" >&2; exit 2 ;;
+  esac
+done
+
+[ -n "$FILE" ] && [ -n "$TEST_CMD" ] || { echo "用法見檔頭：--file 與 --test 必填，--sed / --patch 擇一" >&2; exit 2; }
+{ [ -n "$SED_EXPR" ] && [ -z "$PATCH" ]; } || { [ -z "$SED_EXPR" ] && [ -n "$PATCH" ]; } || { echo "--sed 與 --patch 恰取其一" >&2; exit 2; }
+[ -f "$FILE" ] || { echo "目標檔不存在: $FILE" >&2; exit 2; }
+[ -z "$PATCH" ] || [ -f "$PATCH" ] || { echo "patch 檔不存在: $PATCH" >&2; exit 2; }
+
+BACKUP="$(mktemp "${TMPDIR:-/tmp}/mutate-backup.XXXXXX")"
+cp "$FILE" "$BACKUP" || { echo "備份失敗，中止（未動任何檔案）" >&2; exit 1; }
+
+restore() {
+  cp "$BACKUP" "$FILE"
+  if cmp -s "$BACKUP" "$FILE"; then
+    echo "[還原] OK：$FILE 已與備份逐位一致"
+  else
+    echo "[還原] !! 失敗：$FILE 與備份不一致，備份留在 $BACKUP" >&2
+    exit 1
+  fi
+  rm -f "$BACKUP"
+}
+trap restore EXIT
+
+echo "=== mutate: $FILE ==="
+if [ -n "$SED_EXPR" ]; then
+  sed -i '' -e "$SED_EXPR" "$FILE" || { echo "[變異] sed 執行失敗" >&2; exit 1; }
+else
+  (cd "$CWD" && patch -p0 --no-backup-if-mismatch "$FILE" < "$PATCH") || { echo "[變異] patch 套用失敗" >&2; exit 1; }
+fi
+
+echo "--- 變異 diff（空＝變異沒套上，判 FAIL）---"
+MUT_DIFF="$(diff -u "$BACKUP" "$FILE")"
+if [ -z "$MUT_DIFF" ]; then
+  echo "[變異] !! diff 為空：替換式沒有匹配到任何內容（或只動到不存在的行）。假陰性風險，判 FAIL。" >&2
+  exit 3
+fi
+printf '%s\n' "$MUT_DIFF"
+if printf '%s' "$MUT_DIFF" | grep -E '^[+-]' | grep -v -E '^[+-]{3}' | grep -qv -E '^\+?\-?\s*(//|#|\*|/\*)'; then
+  :
+else
+  echo "[變異] !! 警告：所有變動行看起來都是註解——疑似只換到註解的假陰性（rejection-log 已踩過此型）。" >&2
+fi
+
+echo "--- 跑測試: $TEST_CMD (cwd: $CWD) ---"
+( cd "$CWD" && eval "$TEST_CMD" ) > "${BACKUP}.testlog" 2>&1
+TEST_RC=$?
+tail -n 40 "${BACKUP}.testlog"
+echo "--- 測試 exit code: $TEST_RC ---"
+
+if [ $TEST_RC -ne 0 ]; then
+  echo "[結論] 紅 ✓ — 變異被測試抓到，防護有效。"
+else
+  echo "[結論] 綠 ✗ — 變異存活：這條防線抓不到此變異（假防護嫌疑），需人工裁定。"
+fi
+rm -f "${BACKUP}.testlog"
+# trap 負責還原；以測試紅綠決定 exit code：紅=0（防護有效），綠=4（變異存活）
+trap - EXIT
+restore
+[ $TEST_RC -ne 0 ] && exit 0 || exit 4

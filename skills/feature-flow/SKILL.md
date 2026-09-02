@@ -16,6 +16,7 @@ description: 工程的分支與 worktree 生命週期：主 checkout 恆 dev，�
 
 1. 先跑 /sync-dev 把 dev 拉到最新。
 2. `git worktree add ../<repo名>-feature-<需求slug> -b feature/<需求slug> dev`
+   - 接著 `~/.claude/bin/trust-dir ../<repo名>-feature-<需求slug>`（claude 2.1.258 起 trust 走訪到 git root 即停，每個 worktree 都要各自信任，否則在裡面開的 claude／teammate 會卡在 trust dialog）。
 3. 在 /wip 看板記一行（多需求並行時必開）：需求、feature 分支、**切自 dev hash**（`git -C <主checkout> rev-parse dev`）。
 4. feature 分支不推 remote（全域規則）。前端專案順手依 lock 檔裝依賴（如 `pnpm install --frozen-lockfile`）並確認 `node_modules/.bin/` 有驗證工具（/brief 的 VERIFICATION-TRAPS #6）。
 
@@ -25,6 +26,7 @@ description: 工程的分支與 worktree 生命週期：主 checkout 恆 dev，�
 git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feature/<需求slug>
 ```
 
+- 開完立刻 `~/.claude/bin/trust-dir ../<repo名>-wt-<task-slug>`，再派工——沒信任的 worktree，teammate pane 會停在 trust dialog，外觀就是「工人未動工即死」（零 commit、inbox 未讀）。
 - worktree 放 repo 外側 sibling 目錄，不污染 repo；前端專案同樣先裝依賴再派工。
 - brief 的「工作環境」欄必寫：worktree 絕對路徑、`wt/<需求slug>/<task-slug>` 分支、commit 全留在此分支、不 merge / 不 push / 不切分支 / 不動 worktree 之外的目錄。
 
@@ -50,8 +52,9 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
    - 失敗 → **不刪 feature 分支**，`git revert <該顆 commit>` 或掛待修回報；dev 未 push，可安全回退。
    - dev 沒前進過（單需求串行）→ 本步零成本跳過。
 5. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
-6. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）、刪本需求 e2e spec 目錄（`~/.claude/e2e/specs/<repo>-<需求slug>/`，若有）。
-7. 停下。push 走 **/ship**。
+6. **map delta 更新**（該 repo 在 `~/.claude/maps/` 有 map 才做）：本需求觸及的 map 條目逐條校正（function 改名/搬家/消費者增減），該區塊「最後核對」戳更新為今日＋dev 新 hash；沒觸及任何 map 條目則跳過。
+7. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）、刪本需求 e2e spec 目錄（`~/.claude/e2e/specs/<repo>-<需求slug>/`，若有）。
+8. 停下。push 走 **/ship**。
 
 ### Commit 訊息精簡規則（dev 上那顆）
 

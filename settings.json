@@ -2,6 +2,11 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "permissions": {
     "allow": [
       "Bash(go build*)",
@@ -50,6 +55,7 @@
       "Bash(git fetch*)",
       "Bash(python3 -m unittest discover tools/imgen*)",
       "Bash(~/.claude/bin/phase *)",
+      "Bash(~/.claude/bin/trust-dir *)",
       "mcp__chrome-devtools__take_snapshot",
       "mcp__chrome-devtools__take_screenshot",
       "mcp__chrome-devtools__list_network_requests",
@@ -59,7 +65,7 @@
     ],
     "defaultMode": "bypassPermissions"
   },
-  "model": "claude-fable-5[1m]",
+  "model": "fable[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -200,17 +206,12 @@
     "gopls-lsp@claude-plugins-official": true,
     "swift-lsp@claude-plugins-official": true
   },
-  "effortLevel": "high",
   "language": "chinese",
-  "attribution": {
-    "commit": "",
-    "pr": "",
-    "sessionUrl": false
-  },
+  "effortLevel": "high",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark-ansi",
+  "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": true,
-  "agentPushNotifEnabled": true,
-  "remoteControlAtStartup": true
+  "agentPushNotifEnabled": true
 }

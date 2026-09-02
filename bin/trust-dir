@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""trust-dir <path>...: 把目錄（git repo 時取 git root，即 Claude Code 的 trust key）
+upsert 進 ~/.claude.json projects[<path>].hasTrustDialogAccepted=true。
+背景：claude 2.1.258 起 trust 走訪到 git root 即停，每個 worktree 都要各自信任，
+否則 teammate pane 卡在 trust dialog 不動工。派 teammate 前先跑。"""
+import json, os, subprocess, sys, tempfile, unicodedata
+
+CFG = os.path.expanduser("~/.claude.json")
+
+def key_for(p):
+    p = os.path.abspath(os.path.expanduser(p))
+    if not os.path.isdir(p):
+        sys.exit(f"trust-dir: 不是目錄：{p}")
+    r = subprocess.run(["git", "-C", p, "rev-parse", "--show-toplevel"],
+                       capture_output=True, text=True)
+    top = r.stdout.strip() if r.returncode == 0 else p
+    return unicodedata.normalize("NFC", top)
+
+def main(paths):
+    if not paths:
+        sys.exit(__doc__)
+    keys = [key_for(p) for p in paths]
+    with open(CFG) as f:
+        cfg = json.load(f)
+    projects = cfg.setdefault("projects", {})
+    changed = []
+    for k in keys:
+        entry = projects.setdefault(k, {})
+        if entry.get("hasTrustDialogAccepted") is True:
+            print(f"already trusted: {k}")
+            continue
+        entry["hasTrustDialogAccepted"] = True
+        changed.append(k)
+    if changed:
+        d = os.path.dirname(CFG)
+        fd, tmp = tempfile.mkstemp(dir=d, prefix=".claude.json.")
+        with os.fdopen(fd, "w") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, CFG)
+        for k in changed:
+            print(f"trusted: {k}")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

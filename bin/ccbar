@@ -13,21 +13,36 @@ remain() { # epoch → "2h15m" / "5d2h"（同 statusline.sh）
   if [ "$d" -gt 0 ]; then printf '%dd%dh' "$d" "$h"; else printf '%dh%02dm' "$h" "$m"; fi
 }
 
+# session 剛啟動時 Claude Code 只給 used_percentage、resets_at 晚幾秒才到：
+# 拿到就存快取，沒拿到就用快取裡尚未過期的值，避免啟動空窗倒數空白
+CACHE_DIR="$HOME/.cache/ccbar"
+reset_epoch() { # five_hour|seven_day → epoch（空字串＝真的沒有）
+  local r f
+  r=$("$JQ" -r ".rate_limits.$1.resets_at // empty" <<<"$input")
+  f="$CACHE_DIR/$1.resets_at"
+  if [ -n "$r" ]; then
+    mkdir -p "$CACHE_DIR" && printf '%s' "$r" > "$f"
+  elif [ -s "$f" ]; then
+    r=$(cat "$f"); [ "$r" -gt "$(date +%s)" ] 2>/dev/null || r=''
+  fi
+  printf '%s' "$r"
+}
+
 reset_at=''
 case "$1" in
   5h-reset)  # 純倒數文字（給 widget 自己上色），5h 視窗剩餘時間
-    r=$("$JQ" -r '.rate_limits.five_hour.resets_at // empty' <<<"$input")
+    r=$(reset_epoch five_hour)
     [ -n "$r" ] && printf '(%s)' "$(remain "$r")"
     exit 0 ;;
   week-reset)  # 純倒數文字，7 天視窗剩餘時間
-    r=$("$JQ" -r '.rate_limits.seven_day.resets_at // empty' <<<"$input")
+    r=$(reset_epoch seven_day)
     [ -n "$r" ] && printf '(%s)' "$(remain "$r")"
     exit 0 ;;
   ctx)  pct=$("$JQ" -r '.context_window.used_percentage // 0' <<<"$input"); label='Ctx' ;;
   5h)   pct=$("$JQ" -r '.rate_limits.five_hour.used_percentage // empty' <<<"$input"); label='5h'
-        reset_at=$("$JQ" -r '.rate_limits.five_hour.resets_at // empty' <<<"$input") ;;
+        reset_at=$(reset_epoch five_hour) ;;
   week) pct=$("$JQ" -r '.rate_limits.seven_day.used_percentage // empty' <<<"$input"); label='週'
-        reset_at=$("$JQ" -r '.rate_limits.seven_day.resets_at // empty' <<<"$input") ;;
+        reset_at=$(reset_epoch seven_day) ;;
   *)    exit 0 ;;
 esac
 [ -z "$pct" ] && exit 0   # rate limit 資料未到（第一次 API 回應前）就整格不顯示

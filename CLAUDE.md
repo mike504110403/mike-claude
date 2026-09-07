@@ -58,7 +58,7 @@
 
 ### 影響面證據卡（scoping 站，2026-08-20 起）
 
-「X 也需要調整」要進任務範圍或上 Mike 討論桌之前，必須先有 scout-trace 呼叫鏈證據（X 的哪段 code 依賴被打破的不變量、怎麼壞）；拿不到證據＝待驗假設，派 scout 驗完才有資格出現在方案裡。**Mike 的討論桌上只放已驗事實，不放猜測。**
+「X 也需要調整」要進任務範圍或上 Mike 討論桌之前，必須先有呼叫鏈證據（X 的哪段 code 依賴被打破的不變量、怎麼壞；大腦直讀或 scout-trace 取得，門檻依「角色 × 模型矩陣」探路列）；拿不到證據＝待驗假設，驗完才有資格出現在方案裡。**Mike 的討論桌上只放已驗事實，不放猜測。**
 
 ### 角色 × 模型矩陣（派工的 model 參數）
 
@@ -69,20 +69,20 @@
 | 大腦                                                                                              | 最強模型（session 啟動時選定，不降級）                                                                                                                    |
 | 有 agent 檔的角色（implementer、scout-read、scout-trace、janitor、brief-reviewer、四個 reviewer） | **以 `~/.claude/agents/*.md` frontmatter 為準（model＋effort），本表不重列**——單一 source。金流／架構／複雜演算法：派 implementer 時帶 `model: opus` 覆寫 |
 | 診斷根因 / 選型研究（臨時 prompt，無 agent 檔）                                                   | `opus`                                                                                                                                                    |
-| 探路                                                                                              | 一律派 **scout-read**（取值）／**scout-trace**（判讀），agent 檔已強制證據卡；報告仍是線索不是事實，brief 引用前照舊逐條開檔驗                            |
+| 探路                                                                                              | **先判要不要派**（2026-09-07 起）：改動面 ≤3 檔、或本 session 已讀過相關碼、或單一 grep 可得答案 → **大腦直讀**，自己開檔取證據（證據卡格式同 agent 檔，省一次 agent 往返＋一次重讀）；跨模組呼叫鏈、不熟的 repo、要枚舉多處消費者 → 派 **scout-read**（取值）／**scout-trace**（判讀）。派了的報告仍是線索不是事實，brief 引用前只驗它引用的 `檔案:行號`，不重讀整檔 |
 
 ### 派工紀律
 
-- 派工一律加 `name`（「任務-角色」風格）；同時上限按「**大腦要不要逐個親驗**」分（真瓶頸是大腦串行驗收，不是核心數），多的排隊、收一補一：
+- **派工形式（2026-09-07 起，teammate 只留 implementer）**：**只有 implementer 派具名 teammate**（`name`「任務-角色」風格，開 split pane、SendMessage 回報）；**其餘角色一律 in-process subagent**——scout-read／scout-trace／janitor／brief-reviewer／四個 reviewer／bruno-sync 工人／臨時 prompt 診斷，Agent 呼叫**不帶 `name`**、`description` 寫「任務-角色」、`run_in_background: true`。subagent 的**最終回覆就是報告**（不走 SendMessage、不開 pane、不進 teams config.json）；續聊／複確認用 SendMessage 帶它的 agent id；急停用 TaskStop 帶 id；進度盤點 TaskList／TaskOutput 對 subagent 有效。理由：這些角色讀完回報、不需中途互動，teammate 的 pane、重載 context、inbox 往返全是純成本；implementer 留 teammate 是為了 pane 進度可見，之後仍嫌慢再剪第二刀。
+- 同時上限按「**大腦要不要逐個親驗**」分（真瓶頸是大腦串行驗收，不是核心數），多的排隊、收一補一：
   - 要逐個親驗（實作工人）：**5**，隊列積壓就降。
   - 不必逐個親驗（探路／掃描／文件，產出批次驗證）：**8**。
   - 動用 chrome-devtools MCP 的 agent（僅剩效能診斷：trace／lighthouse／heap）：**同時 1**（共用選頁指標）。ui-reviewer 與 /bug 互動診斷已改 playwright-cli 具名 session（2026-08-27）、/auto-e2e 是 Playwright 腳本，皆不受此限。
 - **背景具名工人未動工即死（零 commit、inbox 未讀）同工程累計 ≥2 次 → 視同派工基礎設施異常**：停止再派背景工人，改同步派工或大腦親實作（lane 與 review chain 照舊），不第三次重試（2026-08-14 marksix dedup 案定則）。
-- **cmux pane 佈局紀律（2026-08-31 修訂：瀏覽器不佔 pane，本節是佈局的唯一 source）**：每次開／關 teammate pane 後跑一輪整理，指令全用 `"$CMUX_BUNDLED_CLI_PATH"`，非 cmux 環境跳過。**幾何事實一律取自 `list-panes --json` 的 `pixel_frame`**（x/y/寬/高；`tree` 順序≠畫面順序，不可依賴）。目標佈局：主 pane 佔容器寬約 6 成；agent pane 均分右欄。瀏覽器一律是既有 pane 裡的 tab（開法見「Browser 自動化工具鏈」末條），**永不為瀏覽器 move-surface／split-off／swap-pane 搬動任何 pane**（Mike 裁示：pane 動來動去影響使用；且 pane 清理按 ref 記帳，swap 過會關錯對象——2026-08-31 演練實證）。順序固定：
-  1. **尺寸調整（回饋迭代）**：`resize-pane --pane X -D/-U/-L/-R --amount <px>`＝把 X 的該側邊界移動 amount 像素，但引擎會按比例重分配鄰居、被壓到最小高度的 pane 行為不可預測——**所以一律「調一步 → 重讀 pixel_frame → 算差值再調」，誤差 ±10% 內即收手，最多 3 輪**。先調主 pane 寬（`identify | jq -r .caller.pane_ref` 取 ref，目標≈容器 6 成），再粗略均分右欄 agent pane。
-  2. **焦點拉回主 pane**：`focus-pane --pane <主pane>`——teammate／瀏覽器開關都會搶焦點且無持久設定可關（schema 查過），一律以這步收尾；開瀏覽器 tab 一律帶 `--focus false`。
-  3. **pane／tab 生命週期**：**TaskStop 不保證自動關 pane**（2026-09-01 實證：五個 teammate 收掉後 pane 殼全數殘留；早前「自動關（已驗）」的記錄作廢）——每次 TaskStop 收 teammate 後跑 `list-panes --json` 盤點，殘留 pane 用 `close-surface --surface <ref>` 逐一清掉；大腦自己開的瀏覽器 tab 同樣不自動關，任務收尾時一併清。清完焦點照舊拉回主 pane。
-- 工人完成驗收後用 **TaskStop**（吃工人名字）收掉，不走工人自行關閉協議。**盤點與進度不用 TaskList/TaskOutput——對具名工人無效**；盤點讀 `~/.claude/teams/session-<id>/config.json`，進度用 SendMessage 問。
+- **cmux pane 紀律（2026-09-07 修訂：不再做尺寸調整，本節是 pane 操作的唯一 source）**：teammate 只剩 implementer，pane 至多一個，均分右欄與 resize 回饋迭代已無意義、全數廢除——**不跑任何 `resize-pane`**。指令全用 `"$CMUX_BUNDLED_CLI_PATH"`，非 cmux 環境跳過；**幾何事實一律取自 `list-panes --json` 的 `pixel_frame`**（`tree` 順序≠畫面順序），只用於瀏覽器 tab 選 pane（見「Browser 自動化工具鏈」末條）。瀏覽器一律是既有 pane 裡的 tab，**永不為瀏覽器 move-surface／split-off／swap-pane 搬動任何 pane**（Mike 裁示：pane 動來動去影響使用；swap 會弄壞按 ref 記帳的清理）。只剩兩件事：
+  1. **焦點拉回主 pane**：每次開／關 teammate pane、開瀏覽器 tab 之後 `focus-pane --pane <主pane>`（`identify | jq -r .caller.pane_ref` 取 ref）——開關都會搶焦點且無持久設定可關；開瀏覽器 tab 一律帶 `--focus false`。
+  2. **清殘殼**：**TaskStop 不保證自動關 pane**（2026-09-01 實證）——TaskStop 收 teammate 後 `list-panes --json` 盤點，殘留 pane 用 `close-surface --surface <ref>` 清掉；大腦自己開的瀏覽器 tab 同樣不自動關，任務收尾一併清。清完焦點照舊拉回主 pane。
+- teammate（implementer）完成驗收後用 **TaskStop**（吃工人名字）收掉，不走工人自行關閉協議。**具名 teammate 的盤點與進度不用 TaskList/TaskOutput（對具名工人無效）**：盤點讀 `~/.claude/teams/session-<id>/config.json`，進度用 SendMessage 問。subagent 做完自行結束、不需收；盤點用 TaskList。
 - done ≠ done：工人回報後大腦必親自抽查 ＋ 親跑可執行證據（步驟在 /verify skill）。
 - 退件回饋迴路：驗收不符或 reviewer 打回 → memory 記一行（任務、原因、歸類）；同類累積成 pattern → 修規則源頭，修完刪記錄。
 

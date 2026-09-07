@@ -9,15 +9,15 @@ description: 收斂現在進行中的工程（收回所有工人、盤點落地�
 
 | 條件                                                      | 模式                                                 |
 | --------------------------------------------------------- | ---------------------------------------------------- |
-| args 是 `save`，或 teams config.json 有存活工人           | 收斂模式                                             |
+| args 是 `save`，或 teams config.json 有存活 teammate、或 TaskList 有跑中的 subagent | 收斂模式 |
 | args 是 `resume`，或無工人且專案根目錄有 `.claude/wip.md` | 續作模式                                             |
 | 兩者都不成立                                              | 回報 Mike：沒有進行中的工程也沒有 wip.md，問要做什麼 |
 
 ## 收斂模式（收工人 → 盤點 → 落檔）
 
-1. **盤點工人**：讀 `~/.claude/teams/session-<id>/config.json` 的 `members[]`（含每個工人的完整 prompt，可直接當 brief 摘要引用）。**TaskList 看不到具名工人，不可用**（2026-08-12 實測）。
-2. **抓最後進度**：逐一 SendMessage 要目前進度（TaskOutput 對具名工人無效）；有報告落檔的直接讀檔。
-3. **收回工人**：逐一 TaskStop（吃工人名字，實測有效）。全部收完才進下一步。
+1. **盤點工人**：具名 teammate（implementer）讀 `~/.claude/teams/session-<id>/config.json` 的 `members[]`（含每個工人的完整 prompt，可直接當 brief 摘要引用；**TaskList 看不到具名工人**，2026-08-12 實測）；subagent（reviewer／scout 等）用 TaskList 盤。
+2. **抓最後進度**：teammate 逐一 SendMessage 要目前進度（TaskOutput 對具名工人無效）；subagent 用 TaskOutput；有報告落檔的直接讀檔。
+3. **收回工人**：teammate 逐一 TaskStop（吃工人名字）；跑中的 subagent TaskStop 帶 id（讀報型角色沒有落地物，直接停即可）。全部收完才進下一步。
 4. **盤點落地狀態**（每個工人的 worktree / 分支逐一查，不信工人回報）：
    - `git -C <worktree路徑> log --oneline -5`：有 commit 的記下 hash。
    - `git -C <worktree路徑> status --porcelain`：有未 commit 改動 → 在該 worktree 逐檔 `git add <明確路徑>` 後 `git commit -m "WIP: <說明>"` 落成 WIP commit（禁止 `git add .`）；改動意圖不明無法下 commit message 就原樣保留，在 wip.md 記「有未 commit 改動，原樣保留」。

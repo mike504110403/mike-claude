@@ -8,7 +8,7 @@ description: 工程的分支與 worktree 生命週期：主 checkout 恆 dev，�
 ## 拓撲不變式（2026-08-12 起）
 
 - **主 checkout 永遠站 dev**：只做 /sync-dev 與階段四合併，HEAD 不切換、不直接改 code。
-- **每個需求一個 feature worktree**（quick/solo 直改也在裡面做）；**每個工人一個 wt/ worktree** 從 feature 掛出。任何 checkout 的 HEAD 從開到收都不變——`git -C` 打錯路徑時，HEAD 也不會是意料外的分支。
+- **每個需求一個 feature worktree**（quick/solo 直改也在裡面做）；**同一波有 ≥2 個 implementer 時，每個工人一個 wt/ worktree** 從 feature 掛出；**一波只有一個 implementer → 直接在 feature worktree 工作，不開 wt/**（2026-09-07 起，省一層 worktree add／trust／裝依賴／合併／清理；與 dev 的隔離不變）。任何 checkout 的 HEAD 從開到收都不變——`git -C` 打錯路徑時，HEAD 也不會是意料外的分支。
 - 同 repo 多需求並行＝多個 feature worktree 並存；**合併回 dev 一律由大腦串行執行**；每 repo 同時至多一個大腦 session（全域不變式）。
 - 派 Agent 不帶 `isolation: "worktree"`——worktree 由本 skill 手動開、手動收，生命週期才可控。
 
@@ -20,7 +20,11 @@ description: 工程的分支與 worktree 生命週期：主 checkout 恆 dev，�
 3. 在 /wip 看板記一行（多需求並行時必開）：需求、feature 分支、**切自 dev hash**（`git -C <主checkout> rev-parse dev`）。
 4. feature 分支不推 remote（全域規則）。前端專案順手依 lock 檔裝依賴（如 `pnpm install --frozen-lockfile`）並確認 `node_modules/.bin/` 有驗證工具（/brief 的 VERIFICATION-TRAPS #6）。
 
-## 階段二：每個工人開一個 worktree（派工前）
+## 階段二：每個工人開一個 worktree（派工前；**單工人波次整段跳過**）
+
+**單工人**：不開 wt/，brief「工作環境」欄直接寫 feature worktree 絕對路徑與 `feature/<需求slug>` 分支（其餘限制同下：不 merge／不 push／不切分支／不動 worktree 外目錄）；階段一已跑過 trust-dir 與裝依賴。**後來又要加派第二個工人** → 第二個起才開 wt/，第一個留在 feature worktree 不搬。
+
+**多工人**：
 
 ```
 git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feature/<需求slug>
@@ -30,7 +34,7 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
 - worktree 放 repo 外側 sibling 目錄，不污染 repo；前端專案同樣先裝依賴再派工。
 - brief 的「工作環境」欄必寫：worktree 絕對路徑、`wt/<需求slug>/<task-slug>` 分支、commit 全留在此分支、不 merge / 不 push / 不切分支 / 不動 worktree 之外的目錄。
 
-## 階段三：整併 commit ＋ 合併回 feature ＋ 清工人 worktree（單一工人驗收＋review 通過即做，不等整波）
+## 階段三：整併 commit ＋ 合併回 feature ＋ 清工人 worktree（單一工人驗收＋review 通過即做，不等整波；**單工人波次跳過，commit 整併留到階段四第 1 步**）
 
 1. **整併 commit——一任務一顆**。在工人 worktree：
    ```

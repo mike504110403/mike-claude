@@ -15,7 +15,7 @@ description: 把專案 API 整理成 Bruno collection。repo 沒有 bruno/ 時�
 ## 大腦執行流程
 
 1. 偵測框架與路由註冊位置（gin/echo/express…）。**Code 是唯一真相來源**：swagger/openapi 檔只作交叉參考；被註解掉的路由不收。
-2. 按大腦規則寫自足 brief 派工人（sonnet、具名、背景），brief 必含下方規則集全文。
+2. 按大腦規則寫自足 brief 派工人（sonnet、in-process subagent 不帶 name、背景，報告＝最終回覆），brief 必含下方規則集全文。
 3. 驗收（不能只信回報）：
    - 路由數對帳：大腦自己 grep 路由註冊數 vs 工人回報數，**差額必須逐條解釋**（例：註解掉的路由）
    - 跨組抽讀 .bru：method / 完整路徑（含 group 前綴）/ 認證 / body 欄位對 DTO

@@ -33,7 +33,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 ## 派工紀律
 
 - 觸發表命中的 reviewer **一律同一則訊息一波派完**（多個 Agent 呼叫放同一 block），不逐個等回報；打回修復後重跑全鏈同樣一波派。唯一例外：動用 chrome-devtools MCP 的 agent（僅剩效能診斷）同時僅 1；ui-reviewer 與 /bug 診斷已改 playwright-cli 具名 session、/auto-e2e 是 Playwright 腳本，皆不受此限。
-- reviewer 的 prompt 必帶回報條款（/brief 的 BRAIN-CHECKLIST）：SendMessage 主動送報告、沒發現問題也要回「審了哪些重點項」。
+- reviewer 一律 in-process subagent（全域「派工紀律」），**報告＝最終回覆**；prompt 必帶回報條款（/brief 的 BRAIN-CHECKLIST）：沒發現問題也要回「審了哪些重點項」。
 - **reviewer prompt 必附 `diff --stat` 檔案清單，並明寫「審查以 diff 涉及檔與其直接呼叫端為界，不做全 repo 探索」**——消費者枚舉已由大腦在寫 brief 時做掉（BRAIN-CHECKLIST），review 端重做是冗餘讀檔（opus 價）。
 - reviewer 只讀不改；發現的既有問題照「既有問題不處理」判準，列一行即可。
 - **runtime 行為斷言只能標 PLAUSIBLE**：reviewer 說「這個錯不會影響流程」這類 runtime 行為判斷，推得再細都不得作為放行理由——要 runtime 證據（實跑重現）才算定案（2026-08-06 GA spinner 案教訓）。
@@ -42,7 +42,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 - 任一 reviewer 打回 → 退回修復（重派或直改，依 lane）。修復輪指令紀律：帶測試的 major 一律要求附雙向變異輸出（移除修復→紅）；reviewer 的 MINOR 備註若指向輸入空間缺口或 30 秒可查證的邊界值，當場升級成明確要求，不放行帶病合併。
 - **修復輪跨軸指派**：發給每個 reviewer 的複確認訊息附**全部指派項清單**（標明各項屬哪軸、由誰確認）——只給單軸自己的條目會造成資訊差誤報 scope creep。
-- **重審與複確認一律 SendMessage 原 reviewer 續聊**（context 已熱、免全量重讀 repo）；原 reviewer 已收掉才開新 agent。
+- **重審與複確認一律 SendMessage 原 reviewer 續聊**（帶該 subagent 的 agent id；context 已熱、免全量重讀 repo）；原 reviewer 續聊失敗才開新 agent。
 - **重跑範圍按嚴重度分層（2026-08-20 起）**：修的含 **MAJOR/BLOCKER** → 修完重跑**整條觸發鏈**（修復輪是新錯高發區，退件 log 實證：重構蒸發防護、修復再收 5 MAJOR）；修的**只有 MINOR** → 只重跑打回的那隻確認修復。
 - **Mike 手測的差異重測**：修復含 MAJOR/BLOCKER 且碰前端檔 → 給 Mike「只需重測這幾條路徑」的差異清單＋該 fix 的 `git diff --stat`（檔名讓 Mike 可自行覆核大腦的判斷）；只修 MINOR 或純後端修復 → 不回頭找 Mike，沿用原手測結果。
-- 全數通過（含手測站）→ 該工人 **TaskStop** 收掉（派工 lane）；記退件依全域迴饋迴路。
+- 全數通過（含手測站）→ 該 implementer **TaskStop** 收掉（派工 lane；reviewer 是 subagent，做完自行結束不需收）；記退件依全域迴饋迴路。

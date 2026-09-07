@@ -18,7 +18,7 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
 
 ## 工作環境
 
-<工作目錄 = worktree 絕對路徑（大腦先依 /feature-flow 開好）、分支 = `wt/<feature>/<task-slug>`。
+<工作目錄 = worktree 絕對路徑（大腦先依 /feature-flow 開好）、分支 = 單工人波次 `feature/<需求slug>`（直接在 feature worktree 做）／多工人 `wt/<需求slug>/<task-slug>`。
 所有指令在該路徑下執行；commit 全留在該分支；不 merge、不 push、不切分支、不動 worktree 之外的目錄>
 
 ## Seam（測試邊界）
@@ -63,7 +63,7 @@ done 時必附，缺一視同未完成：
 3. 驗收標準逐條對照：達成 / 未達成 / 部分達成＋原因
 4. **規則張力與偏離清單**：brief 規定與實際需求衝突、或你偏離 brief 字面的每一處，寫明張力是什麼、你怎麼解、為什麼（**無則明寫「無」**）。發現張力當下就該 SendMessage 回報，不准自行解掉再事後補記。
 5. **順路發現清單**：範圍外既有問題逐條列出，只列不修（**無則明寫「無」**）。
-6. 完成時**必須用 SendMessage 主動送出完整報告**，idle 通知不算回報；送出後未獲回應就重送並標明重送。
+6. 完成時**必須送出完整報告**：teammate（implementer）用 SendMessage 主動送，idle 通知不算回報，未獲回應就重送並標明重送；subagent 角色以**最終回覆**為報告（不用 SendMessage）。
 ```
 
 ## 給大腦

@@ -8,7 +8,7 @@
 # 觸發 hook 的瞬間，新 spawn 的 teammate 可能尚未寫進 config.json（race），
 # hook 誤判「無活工人」。教訓：config.json 在 spawn/stop 邊緣都不即時，
 # 不可當自動銷毀的依據。本版永遠只盤點提醒、絕不自動 close-surface。
-# 非 cmux 環境靜默跳過。規則源頭：~/.claude/CLAUDE.md「cmux pane 佈局紀律」。
+# 非 cmux 環境靜默跳過。規則源頭：~/.claude/CLAUDE.md「cmux pane 紀律」。
 set -u
 
 INPUT=$(cat)

@@ -2,7 +2,7 @@
 """trust-dir <path>...: 把目錄（git repo 時取 git root，即 Claude Code 的 trust key）
 upsert 進 ~/.claude.json projects[<path>].hasTrustDialogAccepted=true。
 背景：claude 2.1.258 起 trust 走訪到 git root 即停，每個 worktree 都要各自信任，
-否則 teammate pane 卡在 trust dialog 不動工。派 teammate 前先跑。"""
+否則 teammate pane 卡在 trust dialog 不動工。派 teammate（implementer）前先跑；subagent 繼承主 session 信任，不受影響。"""
 import json, os, subprocess, sys, tempfile, unicodedata
 
 CFG = os.path.expanduser("~/.claude.json")

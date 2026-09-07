@@ -24,10 +24,10 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 - 每個子任務用 /brief 八欄模板寫自足 brief；seam 沒議定不派工。
 - **拆分粒度（2026-08-20 起）**：盡可能拆細——一個工人一個單一意圖的小切片（一個 seam），壓低每個 agent 的 context、讓它只看得到自己的事。細拆的下限是**切工硬規則：共用元件／檔案與其全部消費者必須劃給同一個工人**（拆開會讓 reviewer 只見半成品、報幻影問題——返點案四次實證）；做不到同工人時，reviewer 的 prompt 必須明寫「另一半在別的 worktree，以下項目不要報」。
-- **brief 寫完直接派工＋影子審查並行**（2026-09-02 起，取代 08-24 的純自檢制）：前提是邊界卡已給 Mike 點頭；BRAIN-CHECKLIST 自檢照做、事實斷言照舊動筆前開檔驗。派 implementer 的**同一則訊息**並行派 brief-reviewer（影子）審同一份 brief——影子報 **BLOCKER** → 立即 SendMessage 中止該工人、修 brief 重派；MAJOR/minor → 攢到該工人 /verify 驗收時一併處理，不中斷工人。影子屬「不必逐個親驗」類（上限 8），不佔實作工人名額；延遲趨近零，換回 08-24 砍閘門後失去的第二道防線（停用期間大腦自檢漏檢實證見 rejection-log）。
+- **brief 寫完直接派工＋影子審查並行**（2026-09-02 起，取代 08-24 的純自檢制）：前提是邊界卡已給 Mike 點頭；BRAIN-CHECKLIST 自檢照做、事實斷言照舊動筆前開檔驗。派 implementer 的**同一則訊息**並行派 brief-reviewer（影子，in-process subagent，報告＝最終回覆）審同一份 brief——影子報 **BLOCKER** → 立即 TaskStop 該工人、修 brief 重派；MAJOR/minor → 攢到該工人 /verify 驗收時一併處理，不中斷工人。影子屬「不必逐個親驗」類（上限 8），不佔實作工人名額；延遲趨近零，換回 08-24 砍閘門後失去的第二道防線（停用期間大腦自檢漏檢實證見 rejection-log）。
 - **派工前環境前提親驗**：brief 工作環境欄引用的環境事實（DB／容器／服務位址）派工當下驗一次——環境狀態要驗不要記；前提已失效就先修環境或改 brief，別讓工人自行起 infra。
 - 分支與 worktree 一律走 /feature-flow（先 /sync-dev）。
-- 具名工人 `run_in_background: true` 平行派工；命名、單波上限、模型選配依全域不變式。
+- `run_in_background: true` 平行派工；**派工形式（implementer 具名 teammate、其餘 subagent）**、命名、單波上限、模型選配依全域「派工紀律」。
 
 ### 3. 驗收（done ≠ done）
 

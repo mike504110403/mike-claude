@@ -19,6 +19,7 @@ args 有給路徑就用該路徑；沒給就用當前專案根目錄。多 repo 
 5. **快轉更新**：`git merge --ff-only origin/dev`。
    - ff 不了（local dev 有 origin 沒有的 commit）→ **停下**，回報分歧狀況（雙方各多幾個 commit、`git log --oneline` 摘要），等 Mike 決定。不自行 merge / rebase / reset。
 6. **回報**：更新前後 hash、拉進幾個 commit、`git log --oneline <舊hash>..dev` 摘要；沒有新 commit 就說「已是最新」。
+7. **graft 圖同步**（2026-09-08 起，repo 有 `graft/.graph/wiring.json` 才做）：拉進新 commit 後圖已過期 → `graft build --lsp --no-gitignore --no-ignore .`（增量、秒級），貼 `✓ wiring` 那行；沒有新 commit 跳過。
 
 ## 禁止事項
 

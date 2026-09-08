@@ -61,7 +61,11 @@
       "mcp__chrome-devtools__list_network_requests",
       "mcp__chrome-devtools__get_network_request",
       "mcp__chrome-devtools__list_console_messages",
-      "mcp__chrome-devtools__list_pages"
+      "mcp__chrome-devtools__list_pages",
+      "Bash(graft:*)",
+      "Bash(npx graft:*)",
+      "Bash(graft-dev:*)",
+      "Bash(node dist/cli.js:*)"
     ],
     "defaultMode": "bypassPermissions"
   },
@@ -146,6 +150,26 @@
             "statusMessage": "盤點/清理 cmux 殘留 pane"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/helpers/graft-hooks-global.cjs\" post-edit",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|mcp__graft__",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/helpers/graft-hooks-global.cjs\" tool-savings",
+            "timeout": 8
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
@@ -158,6 +182,15 @@
             "async": true
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/helpers/graft-hooks-global.cjs\" prompt",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "Stop": [
@@ -168,6 +201,15 @@
             "command": "/Users/mike/claude-pet/hooks/cc-pet-hook.sh Stop",
             "timeout": 5,
             "async": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "GRAFT_TEST_SYNC_RUN=\"$HOME/.claude/helpers/graft-sync-lsp.mjs\" node \"$HOME/.claude/helpers/graft-hooks-global.cjs\" stop",
+            "timeout": 8
           }
         ]
       }
@@ -195,6 +237,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/helpers/graft-hooks-global.cjs\" session-start",
+            "timeout": 8
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
@@ -213,5 +266,8 @@
   "theme": "dark-ansi",
   "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": true,
-  "agentPushNotifEnabled": true
+  "agentPushNotifEnabled": true,
+  "footerLinksRegexes": [
+    "graft/[\\w./-]+\\.md"
+  ]
 }

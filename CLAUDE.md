@@ -60,6 +60,8 @@
 
 「X 也需要調整」要進任務範圍或上 Mike 討論桌之前，必須先有呼叫鏈證據（X 的哪段 code 依賴被打破的不變量、怎麼壞；大腦直讀或 scout-trace 取得，門檻依「角色 × 模型矩陣」探路列）；拿不到證據＝待驗假設，驗完才有資格出現在方案裡。**Mike 的討論桌上只放已驗事實，不放猜測。**
 
+有 graft 圖的 repo（2026-09-08 起）：證據卡由 `graft callers <sym> -d 2 --no-refresh` ＋ `graft blast --base <切自 dev hash>` 直接產出（誰依賴、怎麼呼叫、file:line），大腦只需 `sed -n` 逐字補引用；沒圖的 repo 照上段。
+
 ### 角色 × 模型矩陣（派工的 model 參數）
 
 本表是模型選配的**唯一 source**：/review-chain 等只引用不重抄。
@@ -69,7 +71,7 @@
 | 大腦                                                                                              | 最強模型（session 啟動時選定，不降級）                                                                                                                    |
 | 有 agent 檔的角色（implementer、scout-read、scout-trace、janitor、brief-reviewer、四個 reviewer） | **以 `~/.claude/agents/*.md` frontmatter 為準（model＋effort），本表不重列**——單一 source。金流／架構／複雜演算法：派 implementer 時帶 `model: opus` 覆寫 |
 | 診斷根因 / 選型研究（臨時 prompt，無 agent 檔）                                                   | `opus`                                                                                                                                                    |
-| 探路                                                                                              | **先判要不要派**（2026-09-07 起）：改動面 ≤3 檔、或本 session 已讀過相關碼、或單一 grep 可得答案 → **大腦直讀**，自己開檔取證據（證據卡格式同 agent 檔，省一次 agent 往返＋一次重讀）；跨模組呼叫鏈、不熟的 repo、要枚舉多處消費者 → 派 **scout-read**（取值）／**scout-trace**（判讀）。派了的報告仍是線索不是事實，brief 引用前只驗它引用的 `檔案:行號`，不重讀整檔 |
+| 探路                                                                                              | **先判要不要派**（2026-09-07 起）：改動面 ≤3 檔、或本 session 已讀過相關碼、或單一 grep 可得答案 → **大腦直讀**，自己開檔取證據（證據卡格式同 agent 檔，省一次 agent 往返＋一次重讀）；跨模組呼叫鏈、不熟的 repo、要枚舉多處消費者 → 派 **scout-read**（取值）／**scout-trace**（判讀）。派了的報告仍是線索不是事實，brief 引用前只驗它引用的 `檔案:行號`，不重讀整檔。**repo 有 graft 圖（`graft/.graph/wiring.json`，2026-09-08 起 lottery-platform、gold-price）→ 探路一律先查圖**：`graft callers <sym> -d 2 --no-refresh` 枚舉消費者、`graft grep` 定位（行號可信，取代 ugrep）、`graft skeleton <file>` 看 API 面，再 `sed -n` 逐字取證；有圖的 repo「枚舉多處消費者」不再是派 scout-read 的理由，scout-read 只留給要讀值的任務；派 scout-trace 時把 graft 輸出附進 prompt 當起點。用法與慣例唯一 source：/graft skill |
 
 ### 派工紀律
 

@@ -19,7 +19,8 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
 ## 工作環境
 
 <工作目錄 = worktree 絕對路徑（大腦先依 /feature-flow 開好）、分支 = 單工人波次 `feature/<需求slug>`（直接在 feature worktree 做）／多工人 `wt/<需求slug>/<task-slug>`。
-所有指令在該路徑下執行；commit 全留在該分支；不 merge、不 push、不切分支、不動 worktree 之外的目錄>
+所有指令在該路徑下執行；commit 全留在該分支；不 merge、不 push、不切分支、不動 worktree 之外的目錄。
+【repo 有 graft 圖才寫】開工第一步在本 worktree `graft build --lsp --no-gitignore --no-ignore .`（`graft/` 是 per-directory 產物、worktree 不繼承；cache 共用、秒級）>
 
 ## Seam（測試邊界）
 
@@ -47,6 +48,7 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
   以下常備紀律**依改動面選抄**（2026-08-11 起；後端-only brief 不抄前端條款，抄了是噪音）：
 - 【每份 brief 都抄】範圍外既有問題一律不處理：任務途中發現的既有 bug、壞味道、lint 錯誤、過期依賴…只要不在本 brief 範圍內，一律不修、不順手重構，記下來放進回報的「順路發現」清單即可。唯一例外：該問題直接擋住驗收標準達成——此時停下用 SendMessage 回報，等指示，不得自行擴大範圍。（2026-08-05 起，防「做一做撈既有問題出來處理」的 scope creep）
 - 【改動面含前端／任務含 UI 使用者操作才抄】非同步失敗路徑一律要處理：任何 await 使用者操作（存檔/登入/刪除）失敗時，UI 必須解除 loading 並浮出錯誤，不得 fire-and-forget、不得讓例外流成 uncaught async error；每條破壞性/寫入操作至少配一條失敗路徑測試。
+- 【repo 有 graft 圖才抄】探路先用 graft、再 grep／讀檔（用法見 /graft skill）：找定義 `graft grep`、追呼叫 `graft callers <sym> -d 2`、看檔案 API 面 `graft skeleton <file>`，CLI 一律加 `--no-refresh`；回報時附 `graft blast --base <本分支起點>` 輸出，對照「範圍」欄——blast 列出但範圍外的消費者只登記在順路發現，不動。
 - 【任務用狀態框架（Pinia / Riverpod 等）才抄】狀態快取生命週期要交代：寫明快取何時失效（watch vs read、invalidate 時機）；換帳號、登出、跨頁回訪、跨日不得看到過期資料。>
 
 ## 禁止事項
@@ -68,4 +70,4 @@ done 時必附，缺一視同未完成：
 
 ## 給大腦
 
-拆任務、寫 brief、派工前，先過 [BRAIN-CHECKLIST.md](BRAIN-CHECKLIST.md)（含 FAKE-GUARDS 與 VERIFICATION-TRAPS 兩本型錄的指引）。工人不需要讀它——模板以上就是工人的全部。
+有 graft 圖的 repo：「範圍」欄的檔案清單與消費者清單以 `graft callers`／`graft blast` 產出為底（2026-09-08 起，見全域「影響面證據卡」）。拆任務、寫 brief、派工前，先過 [BRAIN-CHECKLIST.md](BRAIN-CHECKLIST.md)（含 FAKE-GUARDS 與 VERIFICATION-TRAPS 兩本型錄的指引）。工人不需要讀它——模板以上就是工人的全部。

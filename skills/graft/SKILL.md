@@ -14,6 +14,7 @@ description: 全域 graft 探路 skill——只在當前 repo 已有 graft/（�
 - 只被 router 以 method value 註冊的 handler、interface 注入的方法，`callers` 會是空的——改 `graft grep` 找註冊點。
 - **不跑 `--deep`**（會把程式碼送到外部 LLM）。
 - 取證紀律不變：graft 給的 `file:line` 是線索，寫進 brief／證據卡前仍以 `sed -n` 讀出原文逐字引用。
+- **不整檔 Read**：`graft skeleton` 看 API 面、`sed -n` 取片段就夠的場合一律不開整檔。規則本身見全域「Context 預算紀律」重複讀檔列，本 skill 只持有指令用法。
 
 ## 全域接線的維護注意（給大腦）
 

@@ -1,0 +1,126 @@
+#!/Users/mike/.claude/pdf-env/bin/python
+"""PDF → markdown。只印 metadata，內容一律落磁碟（Context 預算紀律）。"""
+import argparse, os, sys, re, contextlib
+
+def human(n):
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.0f}{u}"
+        n /= 1024
+    return f"{n:.1f}TB"
+
+@contextlib.contextmanager
+def mute_stdout(verbose=False):
+    """把 fd 1 暫時導到 /dev/null——套件的 parser/OCR 訊息有 C 層輸出，
+    Python 層的 redirect_stdout 攔不住，必須用 dup2。
+    導 /dev/null 而非 stderr：呼叫端（Bash 工具）會把 stdout 與 stderr 一起帶進
+    context，導去 stderr 只是換管道進來、沒省到。排錯用 -v 放行。"""
+    if verbose:
+        yield
+        return
+    saved = os.dup(1)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        sys.stdout.flush()
+        os.dup2(devnull, 1)
+        yield
+    finally:
+        sys.stdout.flush()
+        os.dup2(saved, 1)
+        os.close(saved)
+        os.close(devnull)
+
+def parse_pages(spec, total):
+    pages = []
+    try:
+        for part in spec.split(","):
+            part = part.strip()
+            if "-" in part:
+                s, e = part.split("-", 1)
+                pages.extend(range(int(s) - 1, int(e)))
+            else:
+                pages.append(int(part) - 1)
+    except ValueError:
+        sys.exit(f"頁範圍格式錯誤：{spec}（用 1-10 或 3,5,7）")
+    # 去重＋排序：回報的頁數必須等於實際處理的頁（-p 3,3,1 曾虛報 3 頁）
+    return sorted({p for p in pages if 0 <= p < total})
+
+def main():
+    ap = argparse.ArgumentParser(description="PDF → markdown（結構保留），只回報 metadata")
+    ap.add_argument("pdf")
+    ap.add_argument("-o", "--out", help="輸出 .md 路徑（預設：同目錄同名 .md）")
+    ap.add_argument("-p", "--pages", help="頁範圍，如 1-10 或 3,5,7（1-based）")
+    ap.add_argument("--images", action="store_true", help="另存內嵌圖片（預設不存，圖不進流程）")
+    ap.add_argument("-v", "--verbose", action="store_true", help="放行套件的 parser/OCR 訊息（排錯用）")
+    a = ap.parse_args()
+
+    if not os.path.isfile(a.pdf):
+        sys.exit(f"找不到檔案：{a.pdf}")
+
+    out = a.out or os.path.splitext(a.pdf)[0] + ".md"
+    img_dir = os.path.splitext(out)[0] + "_images" if a.images else None
+    # 先確保輸出目錄可寫，別讓大檔轉完才炸
+    out_dir = os.path.dirname(os.path.abspath(out))
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except OSError as e:
+        sys.exit(f"輸出目錄無法建立：{out_dir}（{e}）")
+    if not os.access(out_dir, os.W_OK):
+        sys.exit(f"輸出目錄不可寫：{out_dir}")
+
+    with mute_stdout(a.verbose):
+        import pymupdf, pymupdf4llm
+        doc = pymupdf.open(a.pdf)
+        total = doc.page_count
+
+        pages = parse_pages(a.pages, total) if a.pages else None
+        if a.pages and not pages:
+            sys.exit(f"頁範圍 {a.pages} 超出文件範圍（共 {total} 頁）")
+
+        # 文字層偵測：頭中尾均勻抽樣（固定取前 10 頁會被封面／目錄拉低而誤判）
+        # 步長用「無條件進位」——floor 除法在 10-29 頁時退化成 1，
+        # 取樣會變回「前 10 頁」，封面／目錄在前的文件必誤判（19 頁實測）
+        if pages:
+            step = max(1, -(-len(pages) // 10))
+            sample = pages[::step][:10]
+        else:
+            step = max(1, -(-total // 10))
+            sample = list(range(0, total, step))[:10]
+        chars = sum(len(doc[p].get_text().strip()) for p in sample)
+        per_page = chars / max(len(sample), 1)
+
+        if img_dir:
+            os.makedirs(img_dir, exist_ok=True)
+        md = pymupdf4llm.to_markdown(
+            doc, pages=pages, write_images=a.images,
+            image_path=img_dir or "", show_progress=False,
+        )
+
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(md)
+
+    # \w 在 Python 含 CJK，會與逐字 CJK 計數重複——英數只算 ASCII 詞
+    words = len(re.findall(r"[A-Za-z0-9_]+", md)) + len(re.findall(r"[一-鿿]", md))
+    layer = (f"稀疏（抽樣 {len(sample)} 頁，每頁 {per_page:.0f} 字元 < 50）"
+             "——掃描版或版面本身稀疏，兩者都可能；判讀見 /pdf"
+             if per_page < 50 else
+             f"有（抽樣 {len(sample)} 頁，每頁 {per_page:.0f} 字元）")
+    print("✓ 轉換完成")
+    print(f"  來源   : {a.pdf}（{total} 頁, {human(os.path.getsize(a.pdf))}）")
+    if a.pages and pages:
+        nums = [p + 1 for p in pages]
+        # 非連續時列舉實際頁碼——寫成 lo-hi 會讓人以為含中間沒選到的頁
+        contiguous = nums == list(range(nums[0], nums[-1] + 1))
+        shown = f"{nums[0]}-{nums[-1]}" if contiguous else ",".join(map(str, nums))
+        rng = f"{a.pages}（實際 {shown}，{len(pages)} 頁／全文 {total} 頁）"
+    else:
+        rng = f"全部（{total} 頁）"
+    print(f"  範圍   : {rng}")
+    print(f"  輸出   : {out}（{human(os.path.getsize(out))}, 約 {words:,} 字）")
+    print(f"  文字層 : {layer}")
+    print("  下一步 : grep / sed -n 讀片段，**不要整檔 Read**")
+    if img_dir:
+        print(f"  圖片   : {img_dir}（圖不進 context，要判讀派 subagent）")
+
+if __name__ == "__main__":
+    main()

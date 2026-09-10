@@ -15,4 +15,4 @@ Push 是全域規則裡唯一必經 Mike 明確授權的動作。（各需求的
    - **每個要推的分支，推前在本地 build＋test 過**（`go build ./...`＋全套測試綠）——合併/解衝突後沒 build 就推是 CI 掛掉與壞版本上遠端的直接根因。
    - **feature 等級以上、或含 migration 的改動**：push 前必起 **/local-stack** 完整測過——宣告檔含 `prod_data` 的專案（如彩票）即以 prod 副本起棧，等同上線彩排；彩排不過不推。
 4. **Mike 明確授權**後 push → `git ls-remote` 比對 hash 驗證落地。dev 推 remote 前務必問（全域規則）；feature 分支永不推。
-5. **收尾**：改動涉及 API 且有 `bruno/` → /bruno-sync；順手檢查 wip.md「待 Mike 裁示」區與 `~/.claude/ledgers/` 相關 repo 的標紅既有雷——人都到場了，把攢的裁決題一次裁掉；`~/.claude/maps/` 有該 repo map 的順帶過一眼「最後核對」戳，明顯過期（落後本批改動）就補 delta。
+5. **收尾**：改動涉及 API 且有 `bruno/` → /bruno-sync；順手檢查 wip.md「待 Mike 裁示」區與 `~/.claude/ledgers/` 相關 repo 的標紅既有雷——人都到場了，把攢的裁決題一次裁掉；順帶核一次**模型重測門檻**（判定與門檻唯一依據全域「角色 × 模型矩陣」大腦列，不在此重抄）；`~/.claude/maps/` 有該 repo map 的順帶過一眼「最後核對」戳，明顯過期（落後本批改動）就補 delta。

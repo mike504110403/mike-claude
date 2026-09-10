@@ -62,13 +62,31 @@
 
 有 graft 圖的 repo（2026-09-08 起）：證據卡由 `graft callers <sym> -d 2 --no-refresh` ＋ `graft blast --base <切自 dev hash>` 直接產出（誰依賴、怎麼呼叫、file:line），大腦只需 `sed -n` 逐字補引用；沒圖的 repo 照上段。
 
+### Context 預算紀律（2026-09-10 起，token 用量診斷定則）
+
+本節是 context 開銷的**唯一 source**：/verify、/review-chain、/wip、/auto-e2e、/graft、**/pdf、/playwright-cli 與本檔「Browser 自動化工具鏈」節**只引用不重抄（改本節門檻時，這份清單就是要一併通知的對象）。
+
+診斷事實（2026-09-10 transcript 實測）：**98.8% 的 token 是 cache read**——同一份 context 被每一次工具往返反覆重讀；平均 context 逼近 300K，逾六成請求超過 200K。**槓桿是「context 體積 × 請求輪數」的乘法，不是單次省字。**
+
+| 條目 | 硬規則 |
+| ---- | ------ |
+| **截圖不進主 session** | 截圖一律存檔，**大腦不 Read 圖片**；判讀交 subagent（獨立 context，看完回報結論，圖不落大腦 context）。Mike 點名要大腦親看 → `sips -Z 800 <檔>` 縮圖後才 Read。實測圖片佔 Read 位元組 **88%**、卻只佔 Read 次數不到兩成——是單一最大 context 殺手 |
+| **Bash 合併呼叫** | 同一目的的連續 shell 動作用 `&&`／`;`／heredoc **併成一次呼叫**；每多一次工具往返＝多重讀一整份 context。實測 Bash 是最高頻的工具、平均輸出僅約 1KB——貴的不是輸出，是往返。**邊界**：hook 守備的動作（刪除、push、`reset --hard`、DB migration、nginx）一律**單獨呼叫並保持直接形式**，不得併進 heredoc 或長串 `&&`——包一層 hook 就看不進內容（見「Hooks 全程防護」） |
+| **階段轉換點自主收斂** | 每完成一個 feature 波次或一波驗收收工，大腦**主動判斷**（**限 Mike 未明示**；他明講 `/wip save` 就照他的）：**依盤點結果二分**——無未竟事項 → **只提示切新 session、不落檔**（落了是空殼，還會讓下次誤判成有進行中工程）；有 → 落 /wip 再提示。**盤點內容與判準唯一依據 /wip「自主收斂觸發」**，不在此重抄。**compact 是次選且 agent 無法自主觸發**（只能提示 Mike 按）；新 session 只帶 CLAUDE.md＋wip.md，比 compact 殘留的 50-100K 乾淨 |
+| **PDF 不直開** | PDF 用原生 Read 會把每頁轉成圖片進 context（同截圖列的燒法）——一律先 `~/.claude/bin/pdf2md` 轉 markdown 落磁碟再讀片段，流程見 **/pdf** |
+| **重複讀檔** | 同一 session 同一路徑**第二次 Read 一律改 `sed -n` 片段**，例外只有「該檔期間被改過」（以 `git status`／mtime 為準）——機械判準，不靠回想 context 裡還有什麼。不確定大小先 `wc -c`；>50KB 且**必須通讀**才交 subagent。「探路」列的**大腦直讀 ≠ 整檔讀**：直讀在本節下一律以片段形式執行。有 graft 圖的 repo 先查圖（指令用法見 /graft）。實測重複讀取佔 Read 位元組 **44%** |
+
+（模型選配**不是本節硬規則**——大腦無法自行切模型，判定見「角色 × 模型矩陣」大腦列。）
+
+**違反本節＝流程違規**，與「/quick、/solo 硬排除」同級。省下的不是錢是週上限額度：實測 **context 砍半即省三分之一**（cache read 佔等值成本約六成五）。
+
 ### 角色 × 模型矩陣（派工的 model 參數）
 
 本表是模型選配的**唯一 source**：/review-chain 等只引用不重抄。
 
 | 角色                                                                                              | 模型                                                                                                                                                      |
 | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 大腦                                                                                              | 最強模型（session 啟動時選定，不降級）                                                                                                                    |
+| 大腦                                                                                              | **依 cache read 佔比條件式判定**（2026-09-10 實測定則，API 定價快照同日）。本工作流 98%+ 的 token 是 cache read，而 cache read 單價 `claude-fable-5-1` $0.25/MTok、`claude-opus-5` $0.50/MTok——**Opus 貴一倍**，output 那頭省的（$25 vs $50）補不回來。同批 token 換算：**Opus 比 Fable 貴約 12%，Sonnet 約為 Fable 的 45%**。**Sonnet 雖便宜 55%，但大腦是判斷密度最高的角色，降它屬「減少守備」，依跳線規則須 Mike 點頭——本次未評估、不列為選項。** **故現行預設維持 `claude-fable-5-1`，不降級**（2026-09-10 裁示；原「降 Opus 5」提案經重算推翻）。等「Context 預算紀律」各條把 context 壓下、output 佔比上升後**重測再定**（屆時 Opus 的 output 半價會翻盤）。**大腦無法自行切換模型**（由 session 啟動或 Mike `/model` 決定）：可執行義務綁在 **/ship 盤點**（既有「順帶過一眼 ledger」同一站），門檻用可查事實：本工程期間**大腦 Read 圖片次數＝0 且無 >50KB 整檔 Read** → 提醒 Mike 重跑用量診斷再定模型，**不自行降級** |
 | 有 agent 檔的角色（implementer、scout-read、scout-trace、janitor、brief-reviewer、四個 reviewer） | **以 `~/.claude/agents/*.md` frontmatter 為準（model＋effort），本表不重列**——單一 source。金流／架構／複雜演算法：派 implementer 時帶 `model: opus` 覆寫 |
 | 診斷根因 / 選型研究（臨時 prompt，無 agent 檔）                                                   | `opus`                                                                                                                                                    |
 | 探路                                                                                              | **先判要不要派**（2026-09-07 起）：改動面 ≤3 檔、或本 session 已讀過相關碼、或單一 grep 可得答案 → **大腦直讀**，自己開檔取證據（證據卡格式同 agent 檔，省一次 agent 往返＋一次重讀）；跨模組呼叫鏈、不熟的 repo、要枚舉多處消費者 → 派 **scout-read**（取值）／**scout-trace**（判讀）。派了的報告仍是線索不是事實，brief 引用前只驗它引用的 `檔案:行號`，不重讀整檔。**repo 有 graft 圖（`graft/.graph/wiring.json`，2026-09-08 起 lottery-platform、gold-price）→ 探路一律先查圖**：`graft callers <sym> -d 2 --no-refresh` 枚舉消費者、`graft grep` 定位（行號可信，取代 ugrep）、`graft skeleton <file>` 看 API 面，再 `sed -n` 逐字取證；有圖的 repo「枚舉多處消費者」不再是派 scout-read 的理由，scout-read 只留給要讀值的任務；派 scout-trace 時把 graft 輸出附進 prompt 當起點。用法與慣例唯一 source：/graft skill |
@@ -131,6 +149,8 @@
 - **預設用 playwright-cli**：流程已知、要寫成可重跑的 test、CI 會執行、單純跑一次表單/頁面驗證。token 開銷低，優先選這個。
 - **改用 Playwright MCP**：不確定頁面結構、要來回試探元素、需要完整 accessibility tree 做 self-healing 或跨步驟 diff 比對時再切換。探索完、流程確定後，把步驟收斂回 playwright-cli script 或 Playwright Test，不要讓探索用的 MCP session 變成長期跑的東西。
 - 判斷不出屬於哪一種時，先用 playwright-cli 的 snapshot 看一次結構，真的需要更豐富的即時推理再切 MCP，不要一開始就預設用 MCP。
+- **截圖產物一律存檔、不進大腦 context**（唯一依據「Context 預算紀律」截圖列）：`playwright-cli screenshot` 存檔後交 subagent 判讀。
+- **大腦不呼叫 `playwright-cli show --annotate`**——它會把標註截圖直接回傳給**呼叫者**，等於繞過上一條把圖塞進大腦 context。要 UI 回饋：**請 Mike 給截圖檔案路徑**。（不要改派 subagent 跑該指令——它是互動式的，要 Mike 在瀏覽器上畫框打字，而 subagent 一律背景跑、不開 pane，Mike 不會知道有 dashboard 在等他。）
 - 涉及測試帳號/登入 session：一律用獨立測試帳號的 storage state（`state-save`／`state-load`），不要用 persistent profile 裡殘留的登入狀態。
 - 多 agent 並行各用具名 session（`playwright-cli -s=<agent名>`），不共用預設 session。
 - **cmux 內嵌瀏覽器（2026-08-31 起）**：定位＝**給 Mike 看與手測的窗口**，自動化照舊走上面三件。觸發時機：/local-stack 起棧就緒後、/auto-e2e 開跑前，自動把地端前端 URL 開進 cmux；Mike 地端手測入口一律用它，不叫 Mike 自己開瀏覽器。開法（2026-08-31 修訂：**每頁都是加 tab，永不開新 pane、永不搬動 pane**）：

@@ -174,6 +174,7 @@ playwright-cli video-show-actions --duration=600 --position=top-right
 playwright-cli video-hide-actions
 
 # launch the dashboard for UI review / design feedback — user annotates the page, you receive the annotated screenshot, snapshot, and notes
+# 【Mike 全域規則】大腦不得直接呼叫本指令（標註截圖會落大腦 context）——見 CLAUDE.md「Browser 自動化工具鏈」；要用請派 subagent 跑。
 playwright-cli show --annotate
 
 # generate a Playwright locator for an element from its ref or selector

@@ -21,6 +21,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 - 派 reviewer 的**同一時刻**起 /local-stack，並先驗前端 API 位址指向地端——指向判準與 env 分層查法**唯一依據 /vue-dev「瀏覽器實測」0-1 步**，不在此重抄。
 - 驗完通知 Mike：測試入口＋本次改動的重點路徑清單（brief 實測步驟彙整）。
+- **手測回合的截圖處理**（唯一依據全域「Context 預算紀律」截圖列）三段，按可執行性分：(a) 通知 Mike 時就講明「畫面問題請給**截圖檔案路徑**」，不要直接貼圖；(b) Mike 已經貼進來的圖**當沉沒成本**——不重複 Read 同一張、也不叫 Mike 重貼（圖在大腦讀到本規則前就已入 context，移不出去）；(c) reviewer／工人側產出的視覺證據才適用「存檔交 subagent 判讀」。
 - **等 Mike 手測的空檔**：大腦照同一份清單把 /auto-e2e 回放腳本寫好存進 feature worktree——**差異重測先回放，回放紅或新增流程才找 Mike**；Mike 的手只花在第一輪清單外探測。
 - Mike 手測結果與 reviewer 結果**會合**，兩者皆過才收工；Mike 不在 → 手測站等人，不阻塞其他需求開工。
 

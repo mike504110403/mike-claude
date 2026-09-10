@@ -40,6 +40,7 @@ description: 彩票群的地端 prod 資料副本——查生產環境資料、l
 3. `DROP DATABASE lottery; CREATE DATABASE lottery DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;` → nohup 脫離式匯入(4.7GB 約 6 分鐘;**不可**用會被 10 分鐘上限砍掉的前景/背景殼)。
 4. **必做善後**:①`SET GLOBAL sql_mode='NO_ENGINE_SUBSTITUTION'`;②**de-fang**:`UPDATE providers SET status=0 WHERE status=1;`(prod 資料帶真第三方商,不關會對外拉單);③**僅當 dump 有排除表時**——匯出排除表的 migration 記錄刪掉讓程式重建(先 grep dump 的 CREATE TABLE 清單確認,全量 dump 跳過此步):`DELETE FROM migration_record WHERE version IN ('20260709_init_crawler_sync','20260709_add_crawler_sync_task_status_index','20260710_add_crawler_sync_task_fresh','20260813_add_crawler_sync_task_site_id','20260717_add_sync_member_fail_reason','20260810_add_m6_bank_sync','20260709_add_game_recommendations','20260720_add_game_recommendation_interval_group_status');`
 5. `localstack/up.sh` 起棧(它會再跑一次 de-fang,冪等)。
+6. **密鑰清洗（2026-09-09 起，system-ga 案 db-review）**：`TRUNCATE TABLE system_ga;`——prod 的系統級 TOTP secret 是明文，副本帶回地端等於把 prod 的第二因子交給任何拿到副本的人；地端用不到，清掉後走「尚未設定」路徑即可（表不存在時跳過，表由 migration `20260909_add_system_ga` 建）。
 
 ## 其他注意
 

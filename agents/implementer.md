@@ -11,6 +11,8 @@ effort: high
 
 brief 附 `.mutations` 清單時，變異證明一律 `mutate --batch` 一次跑完並貼結果表，不逐條手做。
 
+讀檔與測試輸出的 context 紀律依 brief 紀律欄的常備條款執行（`sed -n` 片段讀檔、測試輸出全文落檔只貼過濾行與 exit 值）；brief 漏抄時同樣適用，不因此整檔 Read 或貼全文。
+
 完成時必須依 brief 回報格式主動送出完整報告（commit hash、`git diff --stat`、測試／typecheck 實際執行輸出、驗收標準逐條對照、規則張力與偏離清單、順路發現清單——後兩者無則明寫「無」）。引用程式碼一律附 `檔案:行號`，行號以 Read／`sed -n` 實際讀出為準。
 
 **投遞方式依執行環境**：有 `SendMessage` 工具（Claude Code 具名 teammate）就用它主動送給 main，idle 通知不算回報、送出後未獲回應就重送並標明重送；沒有該工具（Cursor）則**最終回覆就是報告**，回覆前確認自足，大腦不會再來追問。只送摘要、或把報告留在自己的工作紀錄而沒送出，一律視同未回報。

@@ -49,6 +49,7 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
 - Vue 專案任務 → 紀律遵循 /vue-dev（script setup + TS、只用 Pinia、走既有 axios 封裝、跟隨專案 CLAUDE.md），驗收標準必含 `vue-tsc --noEmit`（或內含它的 build）實際輸出
   以下常備紀律**依改動面選抄**（2026-08-11 起；後端-only brief 不抄前端條款，抄了是噪音）：
 - 【每份 brief 都抄】範圍外既有問題一律不處理：任務途中發現的既有 bug、壞味道、lint 錯誤、過期依賴…只要不在本 brief 範圍內，一律不修、不順手重構，記下來放進回報的「順路發現」清單即可。唯一例外：該問題直接擋住驗收標準達成——此時停下用 SendMessage 回報，等指示，不得自行擴大範圍。（2026-08-05 起，防「做一做撈既有問題出來處理」的 scope creep）
+- 【每份 brief 都抄，2026-09-15 起，context 預算】**讀檔與輸出的 context 紀律**（全域 CLAUDE.md〈Context 預算紀律〉的工人版）：讀檔一律 `sed -n '<起>,<迄>p'` 片段、不整檔 Read（不知道位置先 `grep -n` 定位；<200 行的小檔可整檔 Read 一次）；同一路徑第二次讀只讀片段。測試／typecheck／build 一律**全文落檔、只貼過濾行**，Go 一律帶 `-v`（SKIP 只在 `-v` 下印出）：`LOG=$(mktemp); go test -v ./... > "$LOG" 2>&1; echo "exit=$?"; grep -E '(--- (FAIL|SKIP)|^FAIL|^ok |^PASS|^\?|^panic:|^fatal error:|^WARNING: DATA RACE|^#|^go: |^go\.mod:|no tests to run|\.go:[0-9]+:)' "$LOG"`（保留失敗／SKIP／位置行、編譯錯誤、`[no test files]`／`[no tests to run]`、fatal 與 race 標頭、總結行；其他棧照同原則只留錯誤／位置／略過／總結行，尚無成文細則、自訂後貼 pattern）。回報附過濾輸出、exit 值與 `$LOG` 路徑，全文不貼回報也不進 commit；過濾輸出出現 SKIP／no test files／no tests to run 時，依 VERIFICATION-TRAPS「SKIP 也是綠」判斷該保證是否真的被驗到並在回報明寫。依據：實測單一任務工人整檔 Read 24 次＋20KB 級測試輸出，context 從 47K 漲到 413K。
 - 【改動面含前端／任務含 UI 使用者操作才抄】非同步失敗路徑一律要處理：任何 await 使用者操作（存檔/登入/刪除）失敗時，UI 必須解除 loading 並浮出錯誤，不得 fire-and-forget、不得讓例外流成 uncaught async error；每條破壞性/寫入操作至少配一條失敗路徑測試。
 - 【repo 有 graft 圖才抄】探路先用 graft、再 grep／讀檔（用法見 /graft skill）：找定義 `graft grep`、追呼叫 `graft callers <sym> -d 2`、看檔案 API 面 `graft skeleton <file>`，CLI 一律加 `--no-refresh`；回報時附 `graft blast --base <本分支起點>` 輸出，對照「範圍」欄——blast 列出但範圍外的消費者只登記在順路發現，不動。
 - 【任務用狀態框架（Pinia / Riverpod 等）才抄】狀態快取生命週期要交代：寫明快取何時失效（watch vs read、invalidate 時機）；換帳號、登出、跨頁回訪、跨日不得看到過期資料。>
@@ -64,7 +65,7 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
 done 時必附，缺一視同未完成：
 
 1. commit hash + `git diff --stat`
-2. 測試 / typecheck **實際執行輸出**（不是「已通過」三個字）
+2. 測試 / typecheck **實際執行輸出**（不是「已通過」三個字；依紀律欄常備條款貼過濾行＋exit 值＋`$LOG` 路徑即算實際輸出）
 3. 驗收標準逐條對照：達成 / 未達成 / 部分達成＋原因
 4. **規則張力與偏離清單**：brief 規定與實際需求衝突、或你偏離 brief 字面的每一處，寫明張力是什麼、你怎麼解、為什麼（**無則明寫「無」**）。發現張力當下就該 SendMessage 回報，不准自行解掉再事後補記。
 5. **順路發現清單**：範圍外既有問題逐條列出，只列不修（**無則明寫「無」**）。

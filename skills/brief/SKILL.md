@@ -20,6 +20,7 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
 
 <工作目錄 = worktree 絕對路徑（大腦先依 /feature-flow 開好）、分支 = 單工人波次 `feature/<需求slug>`（直接在 feature worktree 做）／多工人 `wt/<需求slug>/<task-slug>`。
 所有指令在該路徑下執行；commit 全留在該分支；不 merge、不 push、不切分支、不動 worktree 之外的目錄。
+**常備一句（2026-09-10 起，R 家族三犯定則）**：「你的 shell cwd 繼承自大腦派工當下的目錄、未必是本 worktree，且每次 Bash 呼叫後會重置——每個指令自帶 `cd <本 worktree 絕對路徑> &&`，或一律用 `git -C <絕對路徑>`。發現 cwd 與本欄不符不必停工回報，照本欄的絕對路徑做即可。」
 【repo 有 graft 圖才寫】開工第一步在本 worktree `graft build --lsp --no-gitignore --no-ignore .`（`graft/` 是 per-directory 產物、worktree 不繼承；cache 共用、秒級）>
 
 ## Seam（測試邊界）

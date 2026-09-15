@@ -69,7 +69,7 @@
     ],
     "defaultMode": "bypassPermissions"
   },
-  "model": "fable[1m]",
+  "model": "claude-fable-5-1[1m]",
   "hooks": {
     "PreToolUse": [
       {
@@ -255,9 +255,19 @@
     "command": "~/.claude/statusline-dispatch.sh",
     "padding": 0
   },
+  "footerLinksRegexes": [],
   "enabledPlugins": {
+    "gitkraken-hooks@gitkraken": true,
     "gopls-lsp@claude-plugins-official": true,
     "swift-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "gitkraken": {
+      "source": {
+        "source": "directory",
+        "path": "/Users/mike/.claude/plugins/marketplaces/gitkraken"
+      }
+    }
   },
   "language": "chinese",
   "effortLevel": "high",
@@ -266,8 +276,5 @@
   "theme": "dark-ansi",
   "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": true,
-  "agentPushNotifEnabled": true,
-  "footerLinksRegexes": [
-    "graft/[\\w./-]+\\.md"
-  ]
+  "agentPushNotifEnabled": true
 }

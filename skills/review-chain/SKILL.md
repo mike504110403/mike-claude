@@ -37,6 +37,7 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 - reviewer 一律 in-process subagent（全域「派工紀律」），**報告＝最終回覆**；prompt 必帶回報條款（/brief 的 BRAIN-CHECKLIST）：沒發現問題也要回「審了哪些重點項」。
 - **reviewer prompt 必附 `diff --stat` 檔案清單，並明寫「審查以 diff 涉及檔與其直接呼叫端為界，不做全 repo 探索」**——消費者枚舉已由大腦在寫 brief 時做掉（BRAIN-CHECKLIST），review 端重做是冗餘讀檔（opus 價）。
 - reviewer 只讀不改；發現的既有問題照「既有問題不處理」判準，列一行即可。
+- **reviewer prompt 必內聯 `~/.claude/ledgers/<repo>.md` 裡與本次改動面相關、且已標「Mike 裁示不修／非雷／勿再報」的條目**（2026-09-10 定則）：reviewer 看不到 ledger，漏內聯就會把已裁定項當新發現重報，浪費一輪複核。**但裁示的前提若被本次改動改變（例：GA 拿掉後，原本只是第二層的 fail-open 變成唯一授權層），該條要重新上 Mike 討論桌，不是照舊沉默。**
 - **runtime 行為斷言只能標 PLAUSIBLE**：reviewer 說「這個錯不會影響流程」這類 runtime 行為判斷，推得再細都不得作為放行理由——要 runtime 證據（實跑重現）才算定案（2026-08-06 GA spinner 案教訓）。
 
 ## 打回與收工

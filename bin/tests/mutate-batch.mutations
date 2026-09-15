@@ -1,0 +1,95 @@
+# 必須透過 bin/tests/run_dogfood.sh 跑，勿直接對 worktree 執行
+# cwd 刻意指到不存在的路徑：直接對 worktree 跑（沒帶 --cwd 覆寫）會在解析期就以
+# 「目標檔不存在」exit 2，把上面這行約定變成機制，不是只能靠人記得。
+cwd: /nonexistent-use-run_dogfood.sh
+test: bash bin/tests/test_mutate_batch.sh
+
+id: control
+file: bin/mutate-batch.py
+sed: s/EXIT_OK = 0/EXIT_OK = 1/
+expect: red
+
+id: M-not-applied-check
+file: bin/mutate-batch.py
+sed: s/patch_failed or sed_failed or diff_text.strip() == "":/False:/
+expect: red
+
+id: M-control-abort
+file: bin/mutate-batch.py
+sed: s/if idx == 0 and verdict != "PASS":/if False:/
+expect: red
+
+id: M-restore
+file: bin/mutate-batch.py
+sed: s/shutil.copyfile(backup_path, target)/_ = 0/
+expect: red
+
+id: M-restore-abort
+file: bin/mutate-batch.py
+sed: s/if not same:/if False:/
+expect: red
+
+id: M-compile-red-miscount
+file: bin/mutate-batch.py
+sed: s/n_cr += 1/n_pass += 1/
+expect: red
+
+id: M-comment-warning
+file: bin/mutate-batch.py
+sed: s/return len(non_comment) == 0/return False/
+expect: red
+
+id: M-interrupt-trap
+file: bin/mutate-batch.py
+sed: s/raise KeyboardInterrupt()/pass/
+expect: red
+
+id: M-cwd-override
+file: bin/mutate-batch.py
+sed: s/base_cwd = cli_cwd if cli_cwd else (defaults.get("cwd") or os.getcwd())/base_cwd = defaults.get("cwd") or os.getcwd()/
+expect: red
+
+id: M-expect-ignored
+file: bin/mutate-batch.py
+sed: s/verdict = "PASS" if test_col == entry\["expect"\] else "FAIL"/verdict = "PASS" if test_col == "red" else "FAIL"/
+expect: red
+
+id: M-dup-key-check
+file: bin/mutate-batch.py
+sed: s/if k in d:/if False:/
+expect: red
+
+id: M-unknown-key-check
+file: bin/mutate-batch.py
+sed: s/if k not in ENTRY_KEYS:/if False:/
+expect: red
+
+id: M-id-validation
+file: bin/mutate-batch.py
+sed: s/if not ID_RE.match(eid) or "\.\." in eid:/if False:/
+expect: red
+
+id: M-global-unknown-key
+file: bin/mutate-batch.py
+sed: s/if k not in GLOBAL_KEYS:/if False:/
+expect: red
+
+id: M-no-new-session
+file: bin/mutate-batch.py
+sed: s/start_new_session=True/start_new_session=False/
+expect: red
+
+id: M-shell-not-bash
+file: bin/mutate-batch.py
+sed: s/\["bash", "-c", cmd\]/["sh", "-c", cmd]/
+expect: red
+
+id: M-check-out-condition
+file: bin/mutate-batch.py
+sed: s/if out_dir is None and not check_mode:/if out_dir is None:/
+expect: red
+
+id: M-no-sigkill
+file: bin/mutate-batch.py
+sed: s/os.killpg(os.getpgid(p.pid), signal.SIGKILL)/os.killpg(os.getpgid(p.pid), signal.SIGTERM)/
+expect: red

@@ -5,11 +5,80 @@
 #   mutate --file <目標檔> --sed '<sed 替換式>' --test '<測試指令>' [--cwd <目錄>]
 #   mutate --file <目標檔> --patch <patch檔>   --test '<測試指令>' [--cwd <目錄>]
 #
+# 批次模式（吃一份清單檔一次跑完全部變異，轉呼 mutate-batch.py）：
+#   mutate --batch <清單檔> [--cwd <目錄>] [--out <目錄>]
+#   mutate --batch <清單檔> --check [--cwd <目錄>] [--out <目錄>]
+#
+# 清單檔格式：純文字，區塊以空行分隔，每行 key: value；`#` 開頭的行是註解，視為不存在
+# （不當空行、不當區塊分隔，可以出現在區塊中間）。
+# 第一個區塊若沒有 id: 則是全域預設（cwd: / test: / compile: 三鍵，其餘 key 格式錯），
+# 之後每個區塊是一條變異：
+#
+#   cwd: /abs/path/to/worktree
+#   compile: go build ./... && go vet ./internal/service/
+#   test: go test ./internal/router/ -run 'GARebind' -count=1
+#
+#   id: control
+#   file: internal/service/login_guard.go
+#   sed: s/loginFailLimit  = 5/loginFailLimit  = 999/
+#   expect: red
+#
+#   id: M11
+#   file: internal/service/user_profile_service.go
+#   sed: s/if s.userAuth.sessLocked(ctx, phone) {/if false {/
+#   test: go test ./internal/router/ -run 'TestUserGARebindGuard/g' -count=1
+#   expect: red
+#
+#   id: M20-equivalent
+#   file: internal/service/agent_auth_service.go
+#   patch: briefs/m20.patch
+#   expect: green
+#
+# - 每條必填 id、file、sed 或 patch（恰一）；test 未寫用全域（兩處都沒有＝格式錯）；
+#   expect 預設 red（green 用來登記已裁定的 equivalent mutant，仍要跑）。id 只准英數字、
+#   . _ -，且不得含 ..（防路徑逃逸／撞檔名）。每條與全域區塊的 key 皆有白名單，同區塊
+#   重複 key 或未知 key（拼錯）一律格式錯，不靜默吞掉或忽略。
+# - cwd 解析：--cwd 旗標覆寫清單檔 cwd:；兩者皆無時用 process cwd。file／patch 路徑
+#   相對於解析後的 cwd（單條模式 --file 相對呼叫端 cwd 的既有行為不變）。
+# - 第一條必須是控制組（--batch 與 --check 皆強制）：id 為 control，expect: red。
+#   控制組任何非 PASS 結果（測試綠、not-applied、compile-red）＝量測工具壞了，整批中止。
+# - 有 compile: 時每條先跑 compile 再跑 test：compile 失敗記 compile-red，不算 PASS。
+# - 每條執行序：cp 備份 → 套 sed／patch → diff -u 為空判 not-applied（不跑 compile／test）→
+#   全註解變動印警告「所有變動行看起來都是註解」→ compile（若有）→ test →
+#   cp 還原並 cmp -s 驗證逐位一致 → 下一條。patch 套用失敗＝not-applied，還原時一併清掉
+#   patch 產生的 <file>.rej／<file>.orig。還原後 cmp -s 不一致→立即中止整批、印備份檔絕對
+#   路徑、exit 1。還原只用 cp 備份，絕不用任何 git 復原、暫存或清理指令。
+# - stdout 結果表：id | applied | compile | test | expect | verdict | secs
+#   （applied ∈ yes/no；compile ∈ ok/red/-；test ∈ red/green/-；verdict ∈
+#   PASS/FAIL/not-applied/compile-red；secs 為整數），表尾一行總結
+#   「N PASS / N FAIL / N not-applied / N compile-red」。
+# - --out <目錄>（預設清單檔同目錄下 mutate-out/）：每條一個 <id>.log（diff 全文＋
+#   compile／test 輸出全文）、summary.txt（同 stdout 表逐行相同）。
+# - exit code（執行前格式錯先回 2；執行中控制組非 PASS 立即 5；還原失敗立即 1；
+#   跑完後依優先序 3 > 6 > 4，全 PASS 0；任何沒被上述接住的意外內部錯誤回 7）：
+#   0 全 PASS；1 還原失敗中止；2 參數／格式錯；3 任一 not-applied；
+#   4 任一 FAIL；5 控制組非 PASS 中止；6 任一 compile-red；
+#   7 未預期的內部錯誤（刻意不可達的安全網——已知的失敗模式都被前面的碼接住了，
+#   這格純粹防「萬一還有漏網的」，無對應測試）。
+# - --check：只做「解析＋套變異＋diff 非空＋還原」，不 compile、不 test；
+#   表只有 id | applied；exit 0（全 applied）／3（任一沒套上）／2（格式錯）。
+#   結束後每個目標檔必須與開始前逐位一致。沒給 --out 時不建 mutate-out/、不寫
+#   summary.txt／log（全批模式沒給 --out 仍會落在清單旁 mutate-out/，這是唯一例外）。
+#
 # 設計約束（來自 verify/SKILL.md 與 rejection-log 實證）：
 # - 還原一律用 cp 備份檔覆蓋，絕不 git checkout --（會洗掉未 commit 改動，踩過兩次）
 # - 套完變異必印 diff：diff 為空＝變異沒套上（sed 沒匹配／只匹配到註解），直接判 FAIL
 # - 期望結果：測試「紅」＝防護有效；測試「綠」＝假防護，該防線抓不到這個變異
 set -u
+
+# --batch / --check：整段轉呼 mutate-batch.py，不進下面的單條模式邏輯（單條模式行為不變）
+for __arg in "$@"; do
+  if [ "$__arg" = "--batch" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    exec python3 "$SCRIPT_DIR/mutate-batch.py" "$@"
+  fi
+done
+unset __arg
 
 FILE="" SED_EXPR="" PATCH="" TEST_CMD="" CWD="$(pwd)"
 while [ $# -gt 0 ]; do
@@ -57,6 +126,9 @@ if [ -z "$MUT_DIFF" ]; then
   exit 3
 fi
 printf '%s\n' "$MUT_DIFF"
+# 全註解判準與 mutate-batch.py 的 _looks_comment_only／COMMENT_WARNING 是兩份獨立維護的複本，
+# 改這裡（或警告字串）記得同步改那邊，兩邊字面不一致會讓 grep「所有變動行看起來都是註解」的
+# 驗收判準漏一半。
 if printf '%s' "$MUT_DIFF" | grep -E '^[+-]' | grep -v -E '^[+-]{3}' | grep -qv -E '^\+?\-?\s*(//|#|\*|/\*)'; then
   :
 else

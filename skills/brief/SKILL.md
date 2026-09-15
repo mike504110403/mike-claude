@@ -36,7 +36,8 @@ description: 大腦拆任務派工前，用這個模板寫每份自足 brief。�
 
 - `go test ./internal/foo/...` 全綠，含新增的 <行為> 測試
 - `pnpm exec vue-tsc --noEmit` 無錯誤（一律用專案自身執行檔；**禁止裸 `npx`**——沒裝依賴時會靜默抓 registry 新版產出假結果；worktree 先依 lock 檔裝依賴並確認 `node_modules/.bin/` 有該工具）
-  寫不成可執行的（如文案、樣式），寫成可肉眼查核的具體描述>
+  寫不成可執行的（如文案、樣式），寫成可肉眼查核的具體描述
+- 帶變異證明的任務：大腦另附 `<brief同名>.mutations` 清單（格式見 `bin/mutate` 檔頭），派工前已 `mutate --batch --check` 通過；工人只跑 `bash ~/.claude/bin/mutate --batch <清單> --cwd <worktree>`，回報貼結果表全文與 `--out` 目錄路徑，不逐條手做>
 
 ## 紀律
 

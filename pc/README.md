@@ -40,6 +40,15 @@ ssh ai-pc 'shutdown /r /t 5'
 sleep 90; pc-reach
 ```
 
+## 波 1 實跑筆記（2026-09-16 已完成，供重建時參考）
+
+- 內建 `wsl --install` 在 ssh 非互動 session 下會失敗（要 Store）：改抓 GitHub `microsoft/WSL` release 的 `x64.msi` 靜默安裝，再 `wsl --install -d Ubuntu --no-launch` 即可（無 Store 依賴）。
+- Windows 主機 → WSL 的 22 port 被 WSL 2.x Hyper-V 防火牆擋（加 `New-NetFirewallHyperVRule` 仍不通，未深究）。備援別名 `ai-pc-wsl-jump` 用 `ProxyCommand ssh ai-pc wsl -d Ubuntu -u mike -- nc 127.0.0.1 22` 管線繞過，握手 5-8 秒。
+- Tailscale 登入：`tailscale up --timeout` 短逾時不一定印網址；用 `tailscale login --timeout 45s`，或背景跑後讀 `tailscale status --json | jq .AuthURL`。不開 Tailscale SSH（預設 ACL 為 check 模式，會要瀏覽器複驗），用 openssh-server 金鑰登入。
+- WSL 節點 IP 100.66.189.18（ai-pc-wsl）；Windows 節點 100.120.195.79（ai-pc）。
+- 重開驗收實測：`shutdown /r` 後 15 秒斷線、52 秒 Windows ssh 與 WSL pc-reach 同時回來，無人登入（AutoAdminLogon=0、無 explorer）仍全綠。
+- ssh ai-pc 進的是 PowerShell：含 `|`、`<`、跳脫引號的指令一律寫檔 scp 過去執行（ps1 含中文要 UTF-8 BOM；WSL 內用 `wsl -d Ubuntu -u mike -- bash -l /mnt/c/Users/mike/<檔>.sh`）。
+
 ## 波 2-4 每群固定流程
 
 ```

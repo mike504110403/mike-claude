@@ -25,6 +25,8 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 - exit 0 → **PC 模式**：對 `pc.repos` 每個路徑跑 `~/.claude/bin/pc-push <路徑>`（工作樹快照推到 PC，含未 commit 改動）→ `~/.claude/bin/pc-sync-stack <group>`（localstack 目錄與宣告檔同步到 PC 同構路徑）→ 步驟 3／4 的指令改成 `ssh <pc.host> '<cmd>'`，cmd 裡的宣告檔 `root` 前綴一律換成 `pc.root`。回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（`ssh -G <pc.host> | awk '/^hostname /{print $2}'`），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
 - exit 1 → **Mac 模式**：原流程不變。
 
+- PC 模式的前端 dev server：宣告檔 `frontend.dev_server.stack_cmd` 有值時（如 lottery 的 `localstack/frontend.sh up`），經 ssh 在 PC 執行並帶 `LOCALSTACK_API_BASE=http://<PC IP>:8080/api`；`down` 時一併 `frontend.sh down`。沒有 stack_cmd 的專案照宣告檔 `dev_server.start_cmd` 加 `--host 0.0.0.0` 用 nohup 起。**WSL 實例重啟會殺掉 dev server**（Go 服務同理），status 不綠就重跑 up。
+
 無 `pc` 區塊 → Mac 模式。**回報第一行固定寫「棧：PC（<host>）」或「棧：Mac（<pc-reach 印的原因>）」**，讓 Mike 與 /verify 知道證據來自哪台。判定每個動作只跑一次；不通就退回 Mac，不重試、不等 PC。PC 模式的 `wipe` 同樣先問 Mike。
 
 ### 1. 找宣告檔

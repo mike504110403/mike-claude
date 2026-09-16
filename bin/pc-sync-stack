@@ -13,4 +13,10 @@ rsync -az --delete \
   --exclude 'logs/' --exclude 'run/' --exclude 'bin/' --exclude 'httpLogs/' --exclude 'oss-store/' --exclude '*.log' \
   "$src/localstack/" "$host:$dst/localstack/"
 rsync -az "$src/.claude/localstack.json" "$host:$dst/.claude/localstack.json"
+# 根路徑改寫（spec §3.3 的 root→pc.root，套用到同步過去的文字設定檔）：
+# 宣告檔 root 可能是 /Users/mike/documents 或 /Users/mike/Documents（Mac 檔案系統不分大小寫），兩種都換。
+pcroot=$(jq -r '.pc.root // empty' "$src/.claude/localstack.json")
+if [ -n "$pcroot" ]; then
+  ssh -o BatchMode=yes "$host" "cd '$dst' && grep -rlI '/Users/mike/[Dd]ocuments/kabo/$g' localstack .claude/localstack.json 2>/dev/null | xargs -r sed -i 's#/Users/mike/[Dd]ocuments/kabo/$g#$pcroot#g'; echo \"  改寫根路徑 → $pcroot：\$(grep -rlI '$pcroot' localstack .claude 2>/dev/null | wc -l) 個檔\""
+fi
 echo "pc-sync-stack: $g → $host:$dst"

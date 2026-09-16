@@ -1,0 +1,13 @@
+#!/bin/sh
+# ai-gateway 接收端 hook（bootstrap-wsl.sh 依 repos.txt 產生，__BARE__／__WORK__ 會被代換）。
+# 只認 refs/heads/pc-test：checkout -f 到工作目錄，再 clean -fd 移除快照裡沒有的未追蹤檔（ignored 檔如 node_modules 保留）。
+BARE="__BARE__"
+WORK="__WORK__"
+while read -r _old new ref; do
+  [ "$ref" = "refs/heads/pc-test" ] || continue
+  echo "[ai-gateway] pc-test $(printf %.10s "$new") -> $WORK"
+  mkdir -p "$WORK"
+  git --git-dir="$BARE" --work-tree="$WORK" checkout -f pc-test
+  git --git-dir="$BARE" --work-tree="$WORK" clean -fd
+  echo "[ai-gateway] checkout done"
+done

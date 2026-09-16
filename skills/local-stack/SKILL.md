@@ -18,6 +18,15 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 ## 步驟
 
+### 0. 執行位置判定（PC 延伸機，2026-09-16 起）
+
+宣告檔有 `pc` 區塊（`host`、`root`、`repos`）時，先跑 `~/.claude/bin/pc-reach <pc.host>`：
+
+- exit 0 → **PC 模式**：對 `pc.repos` 每個路徑跑 `~/.claude/bin/pc-push <路徑>`（工作樹快照推到 PC，含未 commit 改動）→ `~/.claude/bin/pc-sync-stack <group>`（localstack 目錄與宣告檔同步到 PC 同構路徑）→ 步驟 3／4 的指令改成 `ssh <pc.host> '<cmd>'`，cmd 裡的宣告檔 `root` 前綴一律換成 `pc.root`。回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（`ssh -G <pc.host> | awk '/^hostname /{print $2}'`），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
+- exit 1 → **Mac 模式**：原流程不變。
+
+無 `pc` 區塊 → Mac 模式。**回報第一行固定寫「棧：PC（<host>）」或「棧：Mac（<pc-reach 印的原因>）」**，讓 Mike 與 /verify 知道證據來自哪台。判定每個動作只跑一次；不通就退回 Mac，不重試、不等 PC。PC 模式的 `wipe` 同樣先問 Mike。
+
 ### 1. 找宣告檔
 
 從當前工作目錄逐層往上找 `.claude/localstack.json`，找到第一個就用。
@@ -63,6 +72,7 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 - **宣告檔是唯一事實來源。** 它與現況不符時（服務起不來、port 不對、帳號登不進去），修的是宣告檔或環境，不是在 skill 裡加專案分支。
 - **不要把專案知識寫進這個檔案。** 任何「如果是 X 專案就……」的判斷都是設計失敗的訊號。
+- **PC 模式不是專案知識。** `pc` 區塊是宣告檔的一部分，skill 只做 `root`→`pc.root` 前綴替換與 host 替換；up.sh 在 PC 跑不動時修的是該群 localstack 腳本或宣告檔，不在 skill 加分支。工具與 spec：`~/.claude/plans/pc-offload.md`。
 - **不要為了讓就緒判準過而放寬它。** 判準過不了代表環境真的沒好。
 - 地端環境的目的是**任何操作都不外溢到真實世界**。發現宣告檔的 `isolation` 漏列了對外連線，或有指向正式服務的開關預設開著，當場回報 Mike。
 

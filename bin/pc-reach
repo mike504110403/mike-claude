@@ -1,0 +1,14 @@
+#!/bin/bash
+# pc-reach [host] — PC 延伸機可用性判定（spec §3.2）。
+# ssh 5 秒內通且遠端 docker 可用 → exit 0 印 PC_READY；否則 exit 1 印原因。只判定，不起任何東西。
+# host 預設 ai-pc-wsl（~/.ssh/config 別名），可用 PC_HOST 環境變數或第一個參數覆寫。
+host="${1:-${PC_HOST:-ai-pc-wsl}}"
+if ! out=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new "$host" \
+      'docker info >/dev/null 2>&1 && echo PC_READY || echo NO_DOCKER' 2>&1); then
+  echo "PC_UNREACHABLE: $host ssh 不通（${out//$'\n'/ }）"
+  exit 1
+fi
+case "$out" in
+  *PC_READY*) echo "PC_READY: $host"; exit 0 ;;
+  *)          echo "PC_NOT_READY: $host ssh 通但 docker 不可用（${out//$'\n'/ }）"; exit 1 ;;
+esac

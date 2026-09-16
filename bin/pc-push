@@ -1,0 +1,42 @@
+#!/bin/bash
+# pc-push [repo-dir] — 把工作樹快照推到 PC 接收端 refs/heads/pc-test（spec §3.2、決策 D3）。
+# 快照 = 臨時索引把全部非 ignored 檔 stage 後 commit-tree，含未 commit 與未追蹤檔；不動本地歷史、分支與真索引。
+# 工作樹乾淨時直接推 HEAD。remote 名 pc，URL 依 ~/.claude/pc/repos.txt 推算；worktree 會自動對回主 checkout。
+set -euo pipefail
+REPOS="${PC_REPOS:-$HOME/.claude/pc/repos.txt}"
+HOST="${PC_HOST:-ai-pc-wsl}"
+BARE_BASE="${PC_BARE_BASE:-$HOST:ai-gateway/.bare}"   # 演練用：設成本機目錄即可不經 ssh
+dir="${1:-.}"
+
+top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || { echo "pc-push: $dir 不是 git repo" >&2; exit 2; }
+cd "$top"
+common=$(git rev-parse --path-format=absolute --git-common-dir)
+main="${common%/.git}"
+line=$(awk -v p="$(echo "$main" | tr '[:upper:]' '[:lower:]')" '!/^#/ && tolower($3)==p {print; exit}' "$REPOS")
+[ -n "$line" ] || { echo "pc-push: 主 checkout $main 不在 $REPOS，先補一行" >&2; exit 2; }
+group=$(awk '{print $1}' <<<"$line"); repo=$(awk '{print $2}' <<<"$line")
+url="$BARE_BASE/$group/$repo.git"
+
+if ! git remote get-url pc >/dev/null 2>&1; then
+  git remote add pc "$url"
+elif [ "$(git remote get-url pc)" != "$url" ]; then
+  git remote set-url pc "$url"
+fi
+
+tmpidx=$(mktemp); trap 'rm -f "$tmpidx"' EXIT
+idx=$(git rev-parse --git-path index)
+[ -f "$idx" ] && cp "$idx" "$tmpidx"
+GIT_INDEX_FILE="$tmpidx" git add --all
+tree=$(GIT_INDEX_FILE="$tmpidx" git write-tree)
+head=$(git rev-parse HEAD)
+if [ "$tree" = "$(git rev-parse 'HEAD^{tree}')" ]; then
+  sha=$head; kind="HEAD（工作樹乾淨）"
+else
+  branch=$(git branch --show-current 2>/dev/null); branch=${branch:-detached}
+  sha=$(git commit-tree "$tree" -p "$head" -m "pc snapshot of $branch @ $(date +%FT%T)")
+  kind="快照 commit（含未 commit 改動，父 ${head:0:10}）"
+fi
+
+echo "pc-push: $group/$repo → $url"
+echo "pc-push: 推 $kind ${sha:0:10}"
+git push --no-progress pc "+$sha:refs/heads/pc-test"

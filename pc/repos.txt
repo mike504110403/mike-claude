@@ -1,0 +1,16 @@
+# group repo mac_path — PC 延伸機接收端清單（唯一 source；pc-push 與 bootstrap-wsl.sh 都讀它）
+# 以 # 開頭為註解。mac_path 是主 checkout 路徑（worktree 會自動對回主 checkout）。
+lottery lottery-platform /Users/mike/Documents/kabo/lottery/lottery-platform
+lottery forever /Users/mike/Documents/kabo/lottery/forever
+lottery game-hub-v2 /Users/mike/Documents/kabo/lottery/game-hub-v2
+lottery game-core /Users/mike/Documents/kabo/lottery/game-core
+lottery frontend /Users/mike/Documents/kabo/lottery/frontend
+lottery backend /Users/mike/Documents/kabo/lottery/backend
+gold-price gold-price /Users/mike/Documents/kabo/gold-price/gold-price
+gold-price academy-api /Users/mike/Documents/kabo/gold-price/academy-api
+gold-price academy-frontend /Users/mike/Documents/kabo/gold-price/academy-frontend
+gold-price gold_frontend /Users/mike/Documents/kabo/gold-price/gold_frontend
+gold-price gold_backend /Users/mike/Documents/kabo/gold-price/gold_backend
+gold-recycle gold-recycle /Users/mike/Documents/kabo/gold-recycle/gold-recycle
+gold-recycle gold-recycle-backend /Users/mike/Documents/kabo/gold-recycle/gold-recycle-backend
+gold-recycle gold-recycle-frontend /Users/mike/Documents/kabo/gold-recycle/gold-recycle-frontend

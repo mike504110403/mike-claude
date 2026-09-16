@@ -46,10 +46,24 @@ nvm alias default 22.20.0 >/dev/null
 nvm use default >/dev/null
 npm i -g pnpm@10 >/dev/null
 
-echo "== 6/7 Tailscale（獨立節點 ai-pc-wsl，開 Tailscale SSH）"
+echo "== 6/7 Tailscale（獨立節點 ai-pc-wsl，只用網路層；不開 Tailscale SSH——預設 ACL 是 check 模式會要瀏覽器複驗）"
 command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --ssh --hostname ai-pc-wsl || echo "   tailscale up 需要瀏覽器登入：照上面印出的網址在 Mac 開一次"
-echo "   WSL 節點 IP：$(tailscale ip -4 2>/dev/null || echo 未取得)"
+sudo systemctl enable --now tailscaled >/dev/null 2>&1 || true
+if ! tailscale status >/dev/null 2>&1; then
+  # 未登入：印出登入網址後 25 秒逾時，不卡住；Mike 在任一已登入 Tailscale 的瀏覽器開網址即可
+  sudo tailscale up --hostname ai-pc-wsl --timeout 25s 2>&1 | tee /tmp/tailscale-up.log || true
+  echo "   TAILSCALE_LOGIN_URL=$(grep -o 'https://login.tailscale.com/[^ ]*' /tmp/tailscale-up.log | head -1)"
+fi
+echo "   WSL 節點 IP：$(tailscale ip -4 2>/dev/null || echo 未取得（登入後再跑一次本腳本）)"
+
+echo "== 6b/7 openssh-server（金鑰登入，Mac 公鑰自 ~/ai-gateway/mac.pub）"
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openssh-server >/dev/null
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+if [ -f "$GW/mac.pub" ]; then
+  touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+  grep -qxF "$(cat "$GW/mac.pub")" ~/.ssh/authorized_keys || cat "$GW/mac.pub" >> ~/.ssh/authorized_keys
+fi
+sudo systemctl enable --now ssh >/dev/null 2>&1 || true
 
 echo "== 7/7 ai-gateway 接收端（bare repo＋hook）"
 n=0

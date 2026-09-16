@@ -13,7 +13,7 @@ Write-Output ("POWER_STANDBY_AC=" + $sleepIdx)
 Write-Output ("HIBERNATE=" + (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name HibernateEnabled -ErrorAction SilentlyContinue).HibernateEnabled)
 
 Write-Output "== 2/6 .wslconfig（memory=20GB swap=4GB）"
-Set-Content -Path "$env:USERPROFILE\.wslconfig" -Value "[wsl2]`nmemory=20GB`nswap=4GB`nlocalhostForwarding=true`n" -Encoding ASCII
+Set-Content -Path "$env:USERPROFILE\.wslconfig" -Value "[wsl2]`nmemory=20GB`nswap=4GB`nlocalhostForwarding=true`nvmIdleTimeout=-1`n" -Encoding ASCII
 Write-Output ("WSLCONFIG=" + ((Get-Content "$env:USERPROFILE\.wslconfig") -join ' | '))
 
 Write-Output "== 3/6 啟用 WSL 與 VirtualMachinePlatform（重開後生效）"
@@ -25,11 +25,13 @@ Write-Output "== 4/6 sshd 預設 shell → PowerShell（免 cmd 引號地雷）"
 New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -PropertyType String -Force | Out-Null
 Write-Output ("SSHD_SHELL=" + (Get-ItemProperty 'HKLM:\SOFTWARE\OpenSSH').DefaultShell)
 
-Write-Output "== 5/6 工作排程：開機拉起 WSL（不論登入）"
-$act = New-ScheduledTaskAction -Execute 'C:\Windows\System32\wsl.exe' -Argument '-d Ubuntu --exec /bin/true'
+Write-Output "== 5/6 工作排程：開機拉起 WSL 並常駐撐住實例（不論登入）"
+# 必須是常駐程序：WSL 在「最後一個 wsl.exe session 結束」時會對整個實例 systemctl poweroff（2026-09-17 實踩：
+# 用 /bin/true 時任何 wsl.exe 呼叫退出都讓 docker/sshd/tailscaled 被 SIGTERM 重生，10 分鐘 382 次）。
+$act = New-ScheduledTaskAction -Execute 'C:\Windows\System32\wsl.exe' -Argument '-d Ubuntu -u root --exec /bin/sleep infinity'
 $trg = New-ScheduledTaskTrigger -AtStartup
 $pr  = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Highest
-$set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+$set = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName 'ai-gateway-wsl-boot' -Action $act -Trigger $trg -Principal $pr -Settings $set -Force | Out-Null
 Write-Output ("TASK=" + (Get-ScheduledTask -TaskName 'ai-gateway-wsl-boot').State)
 

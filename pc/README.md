@@ -47,6 +47,8 @@ sleep 90; pc-reach
 - Tailscale 登入：`tailscale up --timeout` 短逾時不一定印網址；用 `tailscale login --timeout 45s`，或背景跑後讀 `tailscale status --json | jq .AuthURL`。不開 Tailscale SSH（預設 ACL 為 check 模式，會要瀏覽器複驗），用 openssh-server 金鑰登入。
 - WSL 節點 IP 100.66.189.18（ai-pc-wsl）；Windows 節點 100.120.195.79（ai-pc）。
 - 重開驗收實測：`shutdown /r` 後 15 秒斷線、52 秒 Windows ssh 與 WSL pc-reach 同時回來，無人登入（AutoAdminLogon=0、無 explorer）仍全綠。
+- **WSL 實例存活的兩個條件**（2026-09-17 實踩，缺一不可）：(1) `.wslconfig` 的 `vmIdleTimeout=-1`，否則 VM 閒置 60 秒關機；(2) 必須有一個常駐的 wsl.exe session（排程 `ai-gateway-wsl-boot` 跑 `-d Ubuntu -u root --exec /bin/sleep infinity`），否則**任何** wsl.exe 呼叫退出都會觸發 `systemctl poweroff`，docker／sshd／tailscaled 全被 SIGTERM 重生（10 分鐘 382 次，切斷了三次 16GB 的 MySQL 匯入）。用 `ai-pc-wsl-jump` 跳板時尤其明顯，因為它每次連線都是一個 wsl.exe session。
+- Portainer CE 2.45 首次建管理員要日誌裡的 `setup_token`（`docker logs portainer | grep setup_token`），用 `X-Setup-Token` header 打 `/api/users/admin/init`；密碼在 `~/.ssh/ai-pc-portainer-password.txt`。
 - ssh ai-pc 進的是 PowerShell：含 `|`、`<`、跳脫引號的指令一律寫檔 scp 過去執行（ps1 含中文要 UTF-8 BOM；WSL 內用 `wsl -d Ubuntu -u mike -- bash -l /mnt/c/Users/mike/<檔>.sh`）。
 
 ## 波 2-4 每群固定流程

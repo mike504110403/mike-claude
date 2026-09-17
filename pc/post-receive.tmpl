@@ -9,5 +9,7 @@ while read -r _old new ref; do
   mkdir -p "$WORK"
   git --git-dir="$BARE" --work-tree="$WORK" checkout -f pc-test
   git --git-dir="$BARE" --work-tree="$WORK" clean -fd
+  # 工作目錄不是 git repo，localstack 腳本靠這個檔知道自己在跑哪個 commit（如 gold-recycle up.sh 的後端快照）
+  printf '%s\n' "$new" > "$WORK/.ai-gateway-rev"
   echo "[ai-gateway] checkout done"
 done

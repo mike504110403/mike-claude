@@ -51,6 +51,14 @@ sleep 90; pc-reach
 - Portainer CE 2.45 首次建管理員要日誌裡的 `setup_token`（`docker logs portainer | grep setup_token`），用 `X-Setup-Token` header 打 `/api/users/admin/init`；密碼在 `~/.ssh/ai-pc-portainer-password.txt`。
 - ssh ai-pc 進的是 PowerShell：含 `|`、`<`、跳脫引號的指令一律寫檔 scp 過去執行（ps1 含中文要 UTF-8 BOM；WSL 內用 `wsl -d Ubuntu -u mike -- bash -l /mnt/c/Users/mike/<檔>.sh`）。
 
+## 副本搬遷（Mac docker volume → PC 容器，波 2／3 實跑筆記）
+
+- 方法：Mac 起臨時容器掛原 volume → `mysqldump`／`pg_dump` → `gzip -1` → `ssh ai-pc-wsl 'gunzip | docker exec -i <db容器> mysql/psql …'`，不落檔。彩票 MySQL 16GB 約 57 分（直連），gold-price PG 三庫（goldprice／academy／finance）約 2 分。
+- MySQL：先 `down.sh`（留 infra）、只起 mysql 容器；`--init-command` 設 `sql_mode=NO_ENGINE_SUBSTITUTION; FOREIGN_KEY_CHECKS=0`；灌完 `SET GLOBAL sql_mode` 等價設定再 `up.sh`（去牙會重跑）。
+- PG（gold-price）：**timescaledb 版本必須與 Mac 相同**——`latest-pg16` 在 PC 拉到的是新版（2.30.1 vs Mac 2.24.0），還原後 hypertable／連續聚合全失效、api 報 `invalid materialized hypertable ID`。做法：`docker pull timescale/timescaledb@sha256:<Mac 的 RepoDigest>` 再 tag 成 `latest-pg16`；先 `CREATE EXTENSION timescaledb`、`SELECT timescaledb_pre_restore()`，灌完 `timescaledb_post_restore()`。臨時容器要帶 `PGDATA=/var/lib/postgresql/data/pgdata`（compose 這樣設，少了會 initdb）。
+- 一次性腳本樣板：`~/.claude/tmp_dbmove.sh`（MySQL）、`~/.claude/tmp_gpmove.sh`（PG），波 4 回收群照 PG 版改（無 timescale，volume `gold-recycle-pg`）。
+- 灌入期間 WSL 不可重啟（見上節常駐 session）。
+
 ## 波 2-4 每群固定流程
 
 ```

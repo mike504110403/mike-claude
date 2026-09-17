@@ -1,6 +1,6 @@
 #!/bin/bash
 # pc-sync-stack <group> — 把 ~/Documents/kabo/<group>/localstack/ 與 .claude/localstack.json rsync 到 PC 同構路徑（spec §3.2）。
-# 排除 logs／run／bin／httpLogs／oss-store／*.log（PC 端自己產）。
+# 排除 logs／run／bin／httpLogs／oss-store／docker/gen／docker/build／*.log（PC 端自己產）。
 set -euo pipefail
 host="${PC_HOST:-ai-pc-wsl}"
 g="${1:?用法：pc-sync-stack <group>（lottery | gold-price | gold-recycle）}"
@@ -10,7 +10,7 @@ dst="ai-gateway/$g"
 [ -f "$src/.claude/localstack.json" ] || { echo "pc-sync-stack: 找不到 $src/.claude/localstack.json" >&2; exit 2; }
 ssh -o BatchMode=yes -o ConnectTimeout=5 "$host" "mkdir -p '$dst/localstack' '$dst/.claude'"
 rsync -az --delete \
-  --exclude '/logs/' --exclude '/run/' --exclude '/bin/' --exclude '/httpLogs/' --exclude '/oss-store/' --exclude '/docker/gen/' --exclude '*.log' \
+  --exclude '/logs/' --exclude '/run/' --exclude '/bin/' --exclude '/httpLogs/' --exclude '/oss-store/' --exclude '/docker/gen/' --exclude '/docker/build/' --exclude '*.log' \
   "$src/localstack/" "$host:$dst/localstack/"
 rsync -az "$src/.claude/localstack.json" "$host:$dst/.claude/localstack.json"
 # 宣告檔 pc.extra_sync[]：不在 git 內但棧需要的產生物（如 swag docs），相對 <group> 根的路徑，逐一 rsync 到 PC 同構位置

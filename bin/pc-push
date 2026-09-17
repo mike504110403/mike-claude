@@ -13,7 +13,7 @@ cd "$top"
 common=$(git rev-parse --path-format=absolute --git-common-dir)
 main="${common%/.git}"
 line=$(awk -v p="$(echo "$main" | tr '[:upper:]' '[:lower:]')" '!/^#/ && tolower($3)==p {print; exit}' "$REPOS")
-[ -n "$line" ] || { echo "pc-push: 主 checkout $main 不在 $REPOS，先補一行" >&2; exit 2; }
+[ -n "$line" ] || { echo "pc-push: 主 checkout $main 不在 ${REPOS}，先補一行" >&2; exit 2; }
 group=$(awk '{print $1}' <<<"$line"); repo=$(awk '{print $2}' <<<"$line")
 url="$BARE_BASE/$group/$repo.git"
 

@@ -18,16 +18,20 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 ## 步驟
 
-### 0. 執行位置判定（PC 延伸機，2026-09-16 起）
+### 0. 執行位置判定（PC 延伸機，2026-09-16 起；2026-09-17 起一律經 `pc-deploy`）
 
-宣告檔有 `pc` 區塊（`host`、`root`、`repos`）時，先跑 `~/.claude/bin/pc-reach <pc.host>`：
+宣告檔有 `pc` 區塊時，**不手工串 pc-reach／pc-push／pc-sync-stack／ssh**，一律一個指令：
 
-- exit 0 → **PC 模式**：對 `pc.repos` 每個路徑跑 `~/.claude/bin/pc-push <路徑>`（工作樹快照推到 PC，含未 commit 改動）→ `~/.claude/bin/pc-sync-stack <group>`（localstack 目錄與宣告檔同步到 PC 同構路徑；會套用 `pc.extra_sync`、`pc.rewrites`）→ 步驟 3／4 的指令改成 `ssh <pc.host> '<cmd>'`，cmd 裡的宣告檔 `root` 前綴一律換成 `pc.root`，**並把 `pc.env` 的每個 KEY=VAL 前置在指令前**（如 `LOCALSTACK_PUBLIC_IP=… GP_API_PORT=8180 localstack/up.sh`）——三群在 PC 同時常駐靠的就是這組 env 把對外埠錯開（貴金屬 API 8180／WS 8181、回收群 PG 5433／Redis 6380、彩票不變），回報時 port 以 `pc.env` 為準。回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（`ssh -G <pc.host> | awk '/^hostname /{print $2}'`），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
-- exit 1 → **Mac 模式**：原流程不變。
+```
+~/.claude/bin/pc-deploy <group> [up|down|status|frontend-up|frontend-down]
+```
 
-- PC 模式的前端 dev server：宣告檔 `frontend.dev_server.stack_cmd` 有值時（如 lottery 的 `localstack/frontend.sh up`），經 ssh 在 PC 執行並帶 `LOCALSTACK_API_BASE=http://<PC IP>:8080/api`；`down` 時一併 `frontend.sh down`。沒有 stack_cmd 的專案照宣告檔 `dev_server.start_cmd` 加 `--host 0.0.0.0` 用 nohup 起。已容器化的群（彩票，2026-09-17 起）主機重開後靠 restart policy 自己回來；還沒容器化的群 **WSL 實例重啟會殺掉原生 dev server 與 Go 服務**，status 不綠就重跑 up。
+它自己讀宣告檔的 `pc` 區塊（host、root、repos、env、extra_sync、rewrites）與 `commands.*`，做完 pc-reach → 逐 repo pc-push（工作樹快照，含未 commit 改動）→ pc-sync-stack → ssh 帶 `pc.env` 在 `pc.root` 執行對應指令。**輸出第一行就是回報要用的「棧：PC（host）」或「棧：Mac（原因）」**，exit 1＝PC 不可達→退回下方 Mac 流程（原流程不變，不重試、不等 PC），exit 0＝該動作在 PC 完成，其餘＝遠端指令的 exit code。`down`／`status`／`frontend-*` 不推碼不同步，只操作 PC 上既有的棧。
 
-無 `pc` 區塊 → Mac 模式。**回報第一行固定寫「棧：PC（<host>）」或「棧：Mac（<pc-reach 印的原因>）」**，讓 Mike 與 /verify 知道證據來自哪台。判定每個動作只跑一次；不通就退回 Mac，不重試、不等 PC。PC 模式的 `wipe` 同樣先問 Mike。
+回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（pc-deploy 就緒行會印；或 `ssh -G <pc.host> | awk '/^hostname /{print $2}'`），port 以 `pc.env` 為準（三群在 PC 同時常駐靠它錯埠：貴金屬 API 8180／WS 8181、回收群 PG 5433／Redis 6380、彩票不變），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
+
+- 已容器化的群（彩票、貴金屬，2026-09-17 起）：up.sh 收尾自帶前端 dev server、status 納入判準、主機重開後靠 restart policy 自己回來。還沒容器化的群（回收，波 5c 前）**WSL 實例重啟會殺掉原生 dev server 與 Go 服務**，status 不綠就重跑 up。
+- 無 `pc` 區塊 → Mac 模式。**回報第一行固定寫「棧：PC（<host>）」或「棧：Mac（<原因>）」**，讓 Mike 與 /verify 知道證據來自哪台。PC 模式的 `wipe` 同樣先問 Mike（pc-deploy 不提供 wipe，要 wipe 就 ssh 手跑 `down.sh --wipe`）。
 
 ### 1. 找宣告檔
 

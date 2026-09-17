@@ -13,6 +13,15 @@ rsync -az --delete \
   --exclude 'logs/' --exclude 'run/' --exclude 'bin/' --exclude 'httpLogs/' --exclude 'oss-store/' --exclude '*.log' \
   "$src/localstack/" "$host:$dst/localstack/"
 rsync -az "$src/.claude/localstack.json" "$host:$dst/.claude/localstack.json"
+# 宣告檔 pc.extra_sync[]：不在 git 內但棧需要的產生物（如 swag docs），相對 <group> 根的路徑，逐一 rsync 到 PC 同構位置
+for rel in $(jq -r '.pc.extra_sync[]? // empty' "$src/.claude/localstack.json"); do
+  if [ -e "$src/$rel" ]; then
+    ssh -o BatchMode=yes "$host" "mkdir -p '$dst/$(dirname "$rel")'"
+    rsync -az "$src/$rel" "$host:$dst/$rel" && echo "  extra_sync: $rel"
+  else
+    echo "  extra_sync 跳過（Mac 上不存在）：$rel" >&2
+  fi
+done
 # 根路徑改寫（spec §3.3 的 root→pc.root，套用到同步過去的文字設定檔）：
 # 宣告檔 root 可能是 /Users/mike/documents 或 /Users/mike/Documents（Mac 檔案系統不分大小寫），兩種都換。
 pcroot=$(jq -r '.pc.root // empty' "$src/.claude/localstack.json")

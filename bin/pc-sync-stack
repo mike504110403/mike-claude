@@ -22,6 +22,11 @@ for rel in $(jq -r '.pc.extra_sync[]? // empty' "$src/.claude/localstack.json");
     echo "  extra_sync 跳過（Mac 上不存在）：$rel" >&2
   fi
 done
+# 宣告檔 pc.rewrites[]：PC 專屬的內容改寫（如 DB 埠錯開），{file: 相對 <group> 根, sed: GNU sed 運算式}，在 PC 端對同步後的檔案執行
+jq -c '.pc.rewrites[]? // empty' "$src/.claude/localstack.json" | while read -r rule; do
+  rf=$(jq -r .file <<<"$rule"); rs=$(jq -r .sed <<<"$rule")
+  ssh -o BatchMode=yes "$host" "cd '$dst' && [ -f '$rf' ] && sed -i -E '$rs' '$rf' && echo '  rewrite: $rf'" || echo "  rewrite 跳過（PC 上無此檔）：$rf" >&2
+done
 # 根路徑改寫（spec §3.3 的 root→pc.root，套用到同步過去的文字設定檔）：
 # 宣告檔 root 可能是 /Users/mike/documents 或 /Users/mike/Documents（Mac 檔案系統不分大小寫），兩種都換。
 pcroot=$(jq -r '.pc.root // empty' "$src/.claude/localstack.json")

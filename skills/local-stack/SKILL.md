@@ -22,7 +22,7 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 宣告檔有 `pc` 區塊（`host`、`root`、`repos`）時，先跑 `~/.claude/bin/pc-reach <pc.host>`：
 
-- exit 0 → **PC 模式**：對 `pc.repos` 每個路徑跑 `~/.claude/bin/pc-push <路徑>`（工作樹快照推到 PC，含未 commit 改動）→ `~/.claude/bin/pc-sync-stack <group>`（localstack 目錄與宣告檔同步到 PC 同構路徑）→ 步驟 3／4 的指令改成 `ssh <pc.host> '<cmd>'`，cmd 裡的宣告檔 `root` 前綴一律換成 `pc.root`。回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（`ssh -G <pc.host> | awk '/^hostname /{print $2}'`），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
+- exit 0 → **PC 模式**：對 `pc.repos` 每個路徑跑 `~/.claude/bin/pc-push <路徑>`（工作樹快照推到 PC，含未 commit 改動）→ `~/.claude/bin/pc-sync-stack <group>`（localstack 目錄與宣告檔同步到 PC 同構路徑；會套用 `pc.extra_sync`、`pc.rewrites`）→ 步驟 3／4 的指令改成 `ssh <pc.host> '<cmd>'`，cmd 裡的宣告檔 `root` 前綴一律換成 `pc.root`，**並把 `pc.env` 的每個 KEY=VAL 前置在指令前**（如 `LOCALSTACK_PUBLIC_IP=… GP_API_PORT=8180 localstack/up.sh`）——三群在 PC 同時常駐靠的就是這組 env 把對外埠錯開（貴金屬 API 8180／WS 8181、回收群 PG 5433／Redis 6380、彩票不變），回報時 port 以 `pc.env` 為準。回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（`ssh -G <pc.host> | awk '/^hostname /{print $2}'`），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
 - exit 1 → **Mac 模式**：原流程不變。
 
 - PC 模式的前端 dev server：宣告檔 `frontend.dev_server.stack_cmd` 有值時（如 lottery 的 `localstack/frontend.sh up`），經 ssh 在 PC 執行並帶 `LOCALSTACK_API_BASE=http://<PC IP>:8080/api`；`down` 時一併 `frontend.sh down`。沒有 stack_cmd 的專案照宣告檔 `dev_server.start_cmd` 加 `--host 0.0.0.0` 用 nohup 起。**WSL 實例重啟會殺掉 dev server**（Go 服務同理），status 不綠就重跑 up。

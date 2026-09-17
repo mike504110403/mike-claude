@@ -27,7 +27,7 @@ description: on-demand 瀏覽器自動化實測：產 Playwright 腳本 headless
 ~/.claude/bin/pc-e2e <spec-filter> --base-url http://<PC IP>:<前端 port> [-- playwright 參數]
 ```
 
-它把 runner（package.json、config、`specs/`）rsync 到 PC `~/ai-gateway/e2e/`，在 `mcr.microsoft.com/playwright:v<runner 同版>-noble` 容器（`--network host`、PC 使用者 uid）跑 `playwright test`；node_modules 在 PC 端用同一 image 的 node `npm ci`（lockfile 沒變就跳過）。輸出第一行「e2e：PC（host）」或「e2e：Mac（原因）」，exit 1＝PC 不可達→退回下方 Mac 跑法，exit 3＝同步／安裝失敗，其餘＝playwright exit code。**證據（trace、失敗截圖）落 PC `~/ai-gateway/e2e/test-results/`**，要判讀派 subagent 經 `ssh ai-pc-wsl` 看或 scp 回 scratchpad，不進大腦 context。`BASE_URL` 一律給 PC 的 Tailscale IP（與 /local-stack 回報同值）；spec 寫法、回放規則與下方步驟相同。
+它把 runner（package.json、config、`specs/`）rsync 到 PC `~/ai-gateway/e2e/`，在 `mcr.microsoft.com/playwright:v<runner 同版>-noble` 容器（`--network host`、PC 使用者 uid）跑 `playwright test`；node_modules 在 PC 端用同一 image 的 node `npm ci`（lockfile 沒變就跳過）。輸出第一行「e2e：PC（host）」或「e2e：Mac（原因）」，**exit 4＝PC 不可達**（棧也在 PC 所以一起不可達：/local-stack 改 Mac 模式重起棧、BASE_URL 改地端後用下方 Mac 跑法），exit 3＝同步／安裝失敗，exit 255＝ssh 中途斷線，其餘含 1＝playwright exit code（1 是有紅或找不到 spec，不是 PC 問題）。**證據（trace、失敗截圖）落 PC `~/ai-gateway/e2e/test-results/`**，要判讀派 subagent 經 `ssh ai-pc-wsl` 看或 scp 回 scratchpad，不進大腦 context。`BASE_URL` 一律給 PC 的 Tailscale IP（與 /local-stack 回報同值）；spec 寫法、回放規則與下方步驟相同。
 
 ## 步驟
 

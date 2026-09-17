@@ -3,7 +3,8 @@
 #   /auto-e2e 的 PC 模式（spec ~/.claude/plans/pc-offload.md D11）：把 ~/.claude/e2e/ 的 runner（package.json、config、specs/）
 #   rsync 到 PC ~/ai-gateway/e2e/，在 mcr.microsoft.com/playwright:v<與 runner 同版>-noble 容器裡（--network host，uid 同 PC 使用者）
 #   跑 playwright test，截圖／trace 落 PC 的 test-results/。node_modules 在 PC 端用同一個 image 的 node 做 npm ci（一次，之後 lockfile 沒變就跳過）。
-#   exit 1＝PC 不可達（呼叫端退 Mac 模式）；exit 2＝參數；exit 3＝同步／安裝失敗；其餘＝playwright 的 exit code（0 全綠）。
+#   exit 4＝PC 不可達（呼叫端退 Mac 模式：/local-stack 改 Mac 起棧、BASE_URL 改地端）；exit 2＝參數；exit 3＝同步／安裝失敗；
+#   exit 255＝ssh 中途斷線；其餘（含 1）＝playwright 的 exit code（0 全綠、1 有紅或找不到 spec）——與 pc-deploy 不同，這裡 1 不是「PC 不可達」。
 #   輸出第一行固定「e2e：PC（host）」或「e2e：Mac（原因）」。結果摘要印在最後；要看圖派 subagent `ssh <host> ls/scp ~/ai-gateway/e2e/test-results/…`。
 set -uo pipefail
 host="${PC_HOST:-ai-pc-wsl}"
@@ -11,9 +12,9 @@ runner="$HOME/.claude/e2e"; remote_dir="ai-gateway/e2e"
 filter=""; base_url=""; extra=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --base-url) base_url="${2:-}"; shift 2 ;;
+    --base-url) [ $# -ge 2 ] || { echo "pc-e2e: --base-url 缺值" >&2; exit 2; }; base_url="$2"; shift 2 ;;
     --base-url=*) base_url="${1#--base-url=}"; shift ;;
-    --) shift; extra=("$@"); break ;;
+    --) shift; extra+=("$@"); break ;;
     -*) extra+=("$1"); shift ;;
     *) [ -z "$filter" ] && filter="$1" || extra+=("$1"); shift ;;
   esac
@@ -22,24 +23,27 @@ done
 case "$base_url" in http://*|https://*) ;; *) echo "pc-e2e: --base-url 要含 scheme（${base_url}）" >&2; exit 2 ;; esac
 case "$base_url" in *localhost*|*127.0.0.1*) echo "pc-e2e: 注意 ${base_url} 在 PC 容器（--network host）內就是 PC 自己，確認棧在 PC" >&2 ;; esac
 
-if ! reason=$("$HOME/.claude/bin/pc-reach" "$host" 2>&1); then echo "e2e：Mac（${reason}）"; exit 1; fi
+if ! reason=$("$HOME/.claude/bin/pc-reach" "$host" 2>&1); then echo "e2e：Mac（${reason}）"; exit 4; fi
 echo "e2e：PC（${host}）"
-ver=$(jq -r '.devDependencies["@playwright/test"] // .dependencies["@playwright/test"]' "$runner/package.json" | tr -d '^~')
+# 版本取 lockfile 解析出的實際版本（package.json 的 ^ 範圍與 lock 可能不同步 → 容器瀏覽器版與 @playwright/test 對不上）
+ver=$(jq -r '.packages["node_modules/@playwright/test"].version // empty' "$runner/package-lock.json")
+[ -n "$ver" ] || { echo "pc-e2e: package-lock.json 讀不到 @playwright/test 版本" >&2; exit 3; }
 image="mcr.microsoft.com/playwright:v${ver}-noble"
 
 # 1. 同步 runner（不含 node_modules／結果）
 ssh -o BatchMode=yes -o RequestTTY=no "$host" "mkdir -p '$remote_dir/specs' '$remote_dir/test-results'" || { echo "pc-e2e: ssh mkdir 失敗" >&2; exit 3; }
-rsync -az --delete --exclude 'node_modules/' --exclude 'test-results/' --exclude 'shots/' --exclude '.auth/' \
+# 注意：不排除 specs 內的 .auth/（storage state 要一起帶到 PC）；只排除 runner 根的產物
+rsync -az --delete -e 'ssh -o BatchMode=yes' --exclude '/node_modules/' --exclude '/test-results/' --exclude '/shots/' \
   "$runner/package.json" "$runner/package-lock.json" "$runner/playwright.config.ts" "$runner/specs" "$host:$remote_dir/" \
   || { echo "pc-e2e: rsync runner 失敗" >&2; exit 3; }
 
 # 2. 在 PC：image 就位 → node_modules（lockfile 變了才 npm ci）→ 跑測試
 remote_script=$(cat <<'RS'
 set -uo pipefail
-cd ~/ai-gateway/e2e
-image="$1"; base_url="$2"; filter="$3"; shift 3
+remote_dir="$1"; image="$2"; base_url="$3"; filter="$4"; shift 4
+cd "$HOME/$remote_dir" || { echo "pc-e2e: PC 上沒有 $remote_dir" >&2; exit 3; }
 docker image inspect "$image" >/dev/null 2>&1 || { echo "pc-e2e: 拉 $image（首次，約 2GB）..."; docker pull -q "$image" >/dev/null || { echo "pc-e2e: docker pull 失敗" >&2; exit 3; }; }
-run() { docker run --rm --network host --ipc host -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work "$@"; }
+run() { docker run --rm --network host --ipc host -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/work" -w /work "$@" </dev/null; }   # 不吃 bash -s 的 stdin
 if [ ! -d node_modules ] || ! cmp -s package-lock.json node_modules/.pc-e2e-lock; then
   echo "pc-e2e: npm ci（lockfile 變了或首次）..."
   run "$image" npm ci --no-audit --no-fund --loglevel=error || { echo "pc-e2e: npm ci 失敗" >&2; exit 3; }
@@ -48,9 +52,9 @@ fi
 echo "pc-e2e: playwright test $filter $* （BASE_URL=$base_url，image $image）"
 run -e BASE_URL="$base_url" -e CI=1 "$image" ./node_modules/.bin/playwright test "$filter" "$@"
 rc=$?
-echo "pc-e2e: exit $rc；證據在 PC ~/ai-gateway/e2e/test-results/（$(ls test-results 2>/dev/null | wc -l) 項）"
+echo "pc-e2e: exit $rc；證據在 PC ~/$remote_dir/test-results/（$(ls test-results 2>/dev/null | wc -l) 項）"
 exit $rc
 RS
 )
-args=$(printf '%q ' "$image" "$base_url" "$filter"); [ ${#extra[@]} -gt 0 ] && args="$args$(printf '%q ' "${extra[@]}")"   # bash 3.2：空陣列展開在 set -u 下會炸
+args=$(printf '%q ' "$remote_dir" "$image" "$base_url" "$filter"); [ ${#extra[@]} -gt 0 ] && args="$args$(printf '%q ' "${extra[@]}")"   # bash 3.2：空陣列展開在 set -u 下會炸
 ssh -o BatchMode=yes -o RequestTTY=no "$host" "bash -s -- $args" <<<"$remote_script"

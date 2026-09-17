@@ -59,6 +59,19 @@ sleep 90; pc-reach
 - 一次性腳本樣板：`~/.claude/tmp_dbmove.sh`（MySQL）、`~/.claude/tmp_gpmove.sh`（PG），波 4 回收群照 PG 版改（無 timescale，volume `gold-recycle-pg`）。
 - 灌入期間 WSL 不可重啟（見上節常駐 session）。
 
+## PC 三群同時常駐的埠對照（D7，2026-09-17 起）
+
+| 群 | 服務 | Mac 埠 | PC 埠 | 由誰決定 |
+| -- | ---- | ------ | ----- | -------- |
+| 彩票 | platform API／health／Vue 後台 | 8080／8081／8082 | 同 | 不變（MySQL 3310、Redis 6679、Mongo 27019、RabbitMQ 5672） |
+| 貴金屬 | 主 API／market-ws | 8080／8081 | **8180／8181** | `GP_API_PORT`／`GP_WS_PORT`（stack compose 插值＋up／status／frontend.sh） |
+| 貴金屬 | academy-api／edge／SSR／OSS／PG／Redis／前台／後台 | 8090／8088／33000／4568／5432／6379／8000／3000 | 同 | 不變 |
+| 回收群 | PG／Redis | 5432／6379 | **5433／6380** | `RC_PG_PORT`／`RC_REDIS_PORT`（`localstack/docker-compose.ports.yml` override＋`pc.rewrites` 改 config-local.yaml） |
+| 回收群 | backend／admin／client／OSS | 18080／3100／8100／4569 | 同 | 不變 |
+
+env 來源＝各群宣告檔 `pc.env`，/local-stack PC 模式前置到指令；`pc.rewrites` 由 pc-sync-stack 在 PC 端套用。三群全開實測：16 個容器、WSL 記憶體用 3GB。
+另：gold-price `down.sh` 的 compose down 會刪 `gold-price-network`，舊的 oss-emulator 容器綁舊網路 ID 會 `docker start` 失敗，up.sh 已改成失敗即砍掉重建（資料在 bind mount）。
+
 ## 波 2-4 每群固定流程
 
 ```

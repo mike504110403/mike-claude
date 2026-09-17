@@ -30,7 +30,7 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（pc-deploy 就緒行會印；或 `ssh -G <pc.host> | awk '/^hostname /{print $2}'`），port 以 `pc.env` 為準（三群在 PC 同時常駐靠它錯埠：貴金屬 API 8180／WS 8181、回收群 PG 5433／Redis 6380、彩票不變），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
 
-- 已容器化的群（彩票、貴金屬，2026-09-17 起）：up.sh 收尾自帶前端 dev server、status 納入判準、主機重開後靠 restart policy 自己回來。還沒容器化的群（回收，波 5c 前）**WSL 實例重啟會殺掉原生 dev server 與 Go 服務**，status 不綠就重跑 up。
+- 三群（彩票、貴金屬、回收）2026-09-17 起全容器化：up.sh 收尾自帶前端 dev server、status 納入判準、主機重開後靠 restart policy 自己回來（docker daemon 重啟實測三群全綠）。status 不綠才重跑 up。
 - 無 `pc` 區塊 → Mac 模式。**回報第一行固定寫「棧：PC（<host>）」或「棧：Mac（<原因>）」**，讓 Mike 與 /verify 知道證據來自哪台。PC 模式的 `wipe` 同樣先問 Mike（pc-deploy 不提供 wipe，要 wipe 就 ssh 手跑 `down.sh --wipe`）。
 
 ### 1. 找宣告檔

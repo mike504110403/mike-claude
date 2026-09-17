@@ -1,19 +1,21 @@
 #!/bin/bash
-# pc-deploy <group> [up|down|status|frontend-up|frontend-down] [--skip-push] [--skip-sync]
+# pc-deploy <group> [up|push|down|status|frontend-up|frontend-down] [--skip-push] [--skip-sync]
 #   把「PC 模式起棧」的四步收成一個指令（spec ~/.claude/plans/pc-offload.md §3.3；2026-09-17 起取代 /local-stack 步驟 0 的手工串接）：
 #     pc-reach → 對宣告檔 pc.repos 逐一 pc-push → pc-sync-stack <group> → ssh 帶 pc.env 執行宣告檔的 up/down/status
 #   所有專案知識都從 ~/Documents/kabo/<group>/.claude/localstack.json 的 pc 區塊與 commands 讀，本腳本零專案分支。
 #   exit 0＝該動作在 PC 成功；exit 1＝PC 不可達或宣告檔無 pc 區塊（呼叫端退 Mac 模式）；exit 2＝參數／宣告檔問題；
 #   exit 3＝pc-push／pc-sync-stack 失敗；其餘＝遠端指令的 exit code。
-#   up：推碼＋同步＋遠端 up；frontend-up：只推前端 repo（宣告檔 frontend 區塊的 repo_path）＋同步；down／status／frontend-down：只同步（腳本住 localstack/，
-#   Mac 改了要讓 PC 跑到新版）不推碼。--skip-push／--skip-sync 各自略過。
+#   up：推碼＋同步＋遠端 up（同步等結果）；push：推碼＋同步後**不 ssh up**，交給 PC 的 push 即部署（波 7c：hook 留旗標→systemd path unit→ops/deploy.sh，
+#   約 15 秒 debounce 後跑該群 up.sh），之後用 status 看 state/deploy/<group>.json；frontend-up：只推前端 repo＋同步；
+#   down／status／frontend-down：只同步（腳本住 localstack/，Mac 改了要讓 PC 跑到新版）不推碼。--skip-push／--skip-sync 各自略過。
+#   status 第二行起先印 PC 的 state/health.json（timer 每 5 分鐘）與 state/deploy/<group>.json（最近一次自動部署），再跑 ready_check。
 #   輸出第一行固定「棧：PC（<host>）」或「棧：Mac（<原因>）」供 /local-stack 直接引用。
 set -uo pipefail
 group="${1:?用法：pc-deploy <group> [up|down|status|frontend-up|frontend-down] [--skip-push] [--skip-sync]}"; shift
 action=up; skip_push=0; skip_sync=0
 for a in "$@"; do
   case "$a" in
-    up|down|status|frontend-up|frontend-down) action="$a" ;;
+    up|push|down|status|frontend-up|frontend-down) action="$a" ;;
     --skip-push) skip_push=1 ;;
     --skip-sync) skip_sync=1 ;;
     *) echo "pc-deploy: 未知參數 $a" >&2; exit 2 ;;
@@ -36,6 +38,10 @@ remote() { # remote <cmd>：在 pc.root 下、帶 pc.env 執行
   ssh -o BatchMode=yes -o RequestTTY=no "$host" "cd '$pcroot' && export PATH=\$PATH:/usr/local/go/bin && env $envstr $1"
 }
 
+# 同步動作（up／frontend-up）自己會跑 up：推碼前放 hold，PC 端 ops/deploy.sh 看到 hold 就丟掉 hook 留的旗標（波 7c），結束時撤 hold
+hold_on()  { ssh -o BatchMode=yes -o RequestTTY=no "$host" "mkdir -p ai-gateway/state/deploy-hold && touch ai-gateway/state/deploy-hold/${group}"; }
+hold_off() { ssh -o BatchMode=yes -o RequestTTY=no "$host" "rm -f ai-gateway/state/deploy-hold/${group} ai-gateway/state/deploy-pending/${group}"; }
+case "$action" in up|frontend-up) hold_on || { echo "pc-deploy: 放 hold 失敗" >&2; exit 3; }; trap hold_off EXIT ;; esac
 push_one() { # push_one <repo-dir>：失敗即 exit 3（不讓 PC 起舊碼）
   local out prc
   out=$("$HOME/.claude/bin/pc-push" "$1" 2>&1); prc=$?
@@ -45,7 +51,7 @@ push_one() { # push_one <repo-dir>：失敗即 exit 3（不讓 PC 起舊碼）
 # up：推 pc.repos 全部；frontend-up：只推宣告檔 frontend 區塊列的前端 repo（repo_path，單一或 repos[]）；其餘不推
 if [ "$skip_push" = 0 ]; then
   case "$action" in
-    up) repos=$(jq -r '.pc.repos[]? // empty' "$decl") ;;
+    up|push) repos=$(jq -r '.pc.repos[]? // empty' "$decl") ;;
     frontend-up) repos=$(jq -r '[.frontend.repo_path?, .frontend.repos[]?.repo_path?] | map(select(. != null)) | .[]' "$decl") ;;
     *) repos="" ;;
   esac
@@ -56,6 +62,13 @@ if [ "$skip_sync" = 0 ]; then
   "$HOME/.claude/bin/pc-sync-stack" "$group" | tail -1 || { echo "pc-deploy: pc-sync-stack $group 失敗" >&2; exit 3; }
 fi
 
+if [ "$action" = push ]; then
+  echo "pc-deploy: ${group} 已推，PC 會在約 15 秒後自動 up（systemd ai-gateway-deploy）；之後 pc-deploy ${group} status 看結果"
+  exit 0
+fi
+if [ "$action" = status ]; then
+  ssh -o BatchMode=yes -o RequestTTY=no "$host" "cd ai-gateway/state 2>/dev/null && { [ -f health.json ] && jq -r '\"健檢 \" + .ts + \" ok=\" + (.ok|tostring) + \"  \" + (.groups|to_entries|map(.key + \":\" + (.value.ok|tostring))|join(\" \"))' health.json; [ -f deploy/${group}.json ] && jq -r '\"最近自動部署 \" + .ts + \" ok=\" + (.ok|tostring) + \" rc=\" + (.rc|tostring) + \"  \" + .revs' deploy/${group}.json; }" 2>/dev/null || true
+fi
 case "$action" in
   up)     cmd=$(to_pc_path "$(jq -r '.commands.up.cmd' "$decl")") ;;
   down)   cmd=$(to_pc_path "$(jq -r '.commands.down.cmd' "$decl")") ;;

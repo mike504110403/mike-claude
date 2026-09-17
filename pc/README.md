@@ -80,3 +80,12 @@ pc-sync-stack <group>
 ssh ai-pc-wsl 'cd ~/ai-gateway/<group> && localstack/up.sh'      # 第一次一定會踩 Mac 專屬路徑，逐條修
 ```
 之後改由 /local-stack PC 模式自動執行（宣告檔 `pc` 區塊）。
+
+## 波 7（2026-09-17）：健檢 timer ＋ push 即部署
+
+PC 端 `~/ai-gateway/ops/`（Mac 源 `~/.claude/pc/ops/`，改了用 `rsync -az ~/.claude/pc/ops/ ai-pc-wsl:ai-gateway/ops/` 同步再跑 `ops/install.sh`）：
+- `healthcheck.sh`：對每個有宣告檔的群跑 `ready_check.cmd`（帶 `pc.env`），寫 `state/health.json`；system timer `ai-gateway-health.timer` 每 5 分鐘（開機後 3 分鐘首跑）。
+- `deploy.sh`：`ai-gateway-deploy.path` 監看 `state/deploy-pending/` 非空 → debounce 15 秒 → 對每個旗標群跑 `commands.up.cmd`，結果寫 `state/deploy/<group>.json`、log 在 `state/logs/deploy-<group>.log`，完成後立刻健檢一次。旗標由接收端 hook（`post-receive.tmpl`）在 checkout 後 touch。`state/deploy-hold/<group>` 存在時丟掉旗標不跑（`pc-deploy up|frontend-up` 自己會跑 up，推碼前放 hold、結束撤）。
+- `install.sh`：寫四個 unit 到 `/etc/systemd/system`（system 層、`User=mike`；WSL 沒 linger，user 層不穩）、`daemon-reload`、`enable --now`。冪等。
+- 踩雷：path unit 的 `MakeDirectory=yes` 會用 root 建目錄，mike 寫不進——目錄由 `ops/lib.sh` 以 mike 身分建，unit 不帶 MakeDirectory。
+- Mac 端：`pc-deploy <group> push`（推完不等，交自動部署）、`pc-deploy <group> status`（先印 health.json 與 deploy/<group>.json 再跑 ready_check）。

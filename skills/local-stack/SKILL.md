@@ -23,10 +23,10 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 宣告檔有 `pc` 區塊時，**不手工串 pc-reach／pc-push／pc-sync-stack／ssh**，一律一個指令：
 
 ```
-~/.claude/bin/pc-deploy <group> [up|down|status|frontend-up|frontend-down] [--skip-push] [--skip-sync]
+~/.claude/bin/pc-deploy <group> [up|push|down|status|frontend-up|frontend-down] [--skip-push] [--skip-sync]
 ```
 
-它自己讀宣告檔的 `pc` 區塊（host、root、repos、env、extra_sync、rewrites）與 `commands.*`，做完 pc-reach → 逐 repo pc-push（工作樹快照，含未 commit 改動）→ pc-sync-stack → ssh 帶 `pc.env` 在 `pc.root` 執行對應指令。**輸出第一行就是回報要用的「棧：PC（host）」或「棧：Mac（原因）」**，exit 1＝PC 不可達或無 pc 區塊→退回下方 Mac 流程（原流程不變，不重試、不等 PC），exit 0＝該動作在 PC 完成，exit 3＝推碼／同步失敗（不會在 PC 起舊碼），其餘＝遠端指令的 exit code。`up` 推全部 repo；`frontend-up` 只推宣告檔 frontend 區塊的前端 repo；`down`／`status`／`frontend-down` 不推碼——但**每個動作都同步 localstack/**（腳本住那裡，Mac 改了 PC 才跑得到新版）。`status` 跑宣告檔 `ready_check.cmd`（與下方步驟 4 同源）。
+它自己讀宣告檔的 `pc` 區塊（host、root、repos、env、extra_sync、rewrites）與 `commands.*`，做完 pc-reach → 逐 repo pc-push（工作樹快照，含未 commit 改動）→ pc-sync-stack → ssh 帶 `pc.env` 在 `pc.root` 執行對應指令。**輸出第一行就是回報要用的「棧：PC（host）」或「棧：Mac（原因）」**，exit 1＝PC 不可達或無 pc 區塊→退回下方 Mac 流程（原流程不變，不重試、不等 PC），exit 0＝該動作在 PC 完成，exit 3＝推碼／同步失敗（不會在 PC 起舊碼），其餘＝遠端指令的 exit code。`up` 推全部 repo 並同步等 PC 起完；`push` 推全部 repo 後不等（PC 端 systemd 收到 hook 旗標約 15 秒後自動跑該群 up.sh，2026-09-17 波 7c）——改完程式碼要看畫面用 `push`，要立即拿到就緒證據用 `up`；`frontend-up` 只推宣告檔 frontend 區塊的前端 repo；`down`／`status`／`frontend-down` 不推碼——但**每個動作都同步 localstack/**（腳本住那裡，Mac 改了 PC 才跑得到新版）。`status` 先印 PC 端狀態檔（health.json 每 5 分鐘 timer 健檢、deploy/<group>.json 最近一次自動部署）再跑宣告檔 `ready_check.cmd`（與下方步驟 4 同源）。
 
 回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（pc-deploy 就緒行會印；或 `ssh -G <pc.host> | awk '/^hostname /{print $2}'`），port 以 `pc.env` 為準（三群在 PC 同時常駐靠它錯埠：貴金屬 API 8180／WS 8181、回收群 PG 5433／Redis 6380、彩票不變），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
 

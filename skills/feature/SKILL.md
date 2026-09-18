@@ -27,7 +27,7 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 - **brief 寫完直接派工＋影子審查並行**（2026-09-02 起，取代 08-24 的純自檢制）：前提是邊界卡已給 Mike 點頭；BRAIN-CHECKLIST 自檢照做、事實斷言照舊動筆前開檔驗。派 implementer 的**同一則訊息**並行派 brief-reviewer（影子，in-process subagent，報告＝最終回覆）審同一份 brief——影子報 **BLOCKER** → 立即 TaskStop 該工人、修 brief 重派；MAJOR/minor → 攢到該工人 /verify 驗收時一併處理，不中斷工人。影子屬「不必逐個親驗」類（上限 8），不佔實作工人名額；延遲趨近零，換回 08-24 砍閘門後失去的第二道防線（停用期間大腦自檢漏檢實證見 rejection-log）。
 - **派工前環境前提親驗**：brief 工作環境欄引用的環境事實（DB／容器／服務位址）派工當下驗一次——環境狀態要驗不要記；前提已失效就先修環境或改 brief，別讓工人自行起 infra。
 - 分支與 worktree 一律走 /feature-flow（先 /sync-dev）。
-- `run_in_background: true` 平行派工；**派工形式（implementer 具名 teammate、其餘 subagent）**、命名、單波上限、模型選配依全域「派工紀律」。
+- `run_in_background: true` 平行派工；**派工形式（implementer 具名 teammate、其餘 subagent）**、命名、單波上限、模型選配依本 skill「派工紀律」節與全域「模型選配」。
 
 ### 3. 驗收（done ≠ done）
 
@@ -44,6 +44,19 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 - 合併依 /feature-flow 階段三、四（階段四含合併後重驗與三清）。
 - **改動面含前端**：合併回 dev 的前提是 review chain 的「Mike 手測並行站」已過（依全域矩陣；/auto-e2e 僅 on-demand，用於 Mike 點名代測或 /bug runtime 重現）。API 合約以 bruno collection 為對照（有 bruno/ 的專案先 /bruno-sync 增量同步再驗）。
 - commit 後停下；push 走 /ship。
+
+## 派工紀律（全域唯一 source，2026-09-18 自 CLAUDE.md 遷入；/review-chain、/bug、/mega 只引用）
+
+- **派工形式（2026-09-07 起）**：**只有 implementer 派具名 teammate**（`name`「任務-角色」風格，開 split pane、SendMessage 回報）；**其餘角色一律 in-process subagent**——scout-read／scout-trace／janitor／brief-reviewer／四個 reviewer／bruno-sync 工人／臨時 prompt 診斷，Agent 呼叫**不帶 `name`**、`description` 寫「任務-角色」、`run_in_background: true`。subagent 的**最終回覆就是報告**；續聊用 SendMessage 帶 agent id；急停 TaskStop 帶 id；盤點 TaskList／TaskOutput 對 subagent 有效。理由：這些角色讀完回報、不需中途互動，pane、重載 context、inbox 往返全是純成本。
+- **同時上限**按「大腦要不要逐個親驗」分（真瓶頸是大腦串行驗收）：要逐個親驗（實作工人）**5**，隊列積壓就降；不必逐個親驗（探路／掃描／文件）**8**；動用 chrome-devtools MCP 的 agent **同時 1**（共用選頁指標）。
+- **探路要不要派**（2026-09-07 起）：改動面 ≤3 檔、本 session 已讀過相關碼、或單一 grep 可得答案 → **大腦直讀**（片段形式，證據卡格式同 agent 檔）；跨模組呼叫鏈、不熟的 repo、要枚舉多處消費者 → 派 **scout-read**（取值）／**scout-trace**（判讀）。派了的報告仍是線索不是事實，brief 引用前只驗它引用的 `檔案:行號`。**有 graft 圖的 repo 探路一律先查圖**（`graft callers`／`graft grep`／`graft skeleton`，見 /graft）——「枚舉多處消費者」不再是派 scout-read 的理由；派 scout-trace 時把 graft 輸出附進 prompt。
+- **未動工即死**：背景具名工人零 commit、inbox 未讀，同工程累計 ≥2 次 → 視同派工基礎設施異常，停止再派背景工人，改同步派工或大腦親實作，不第三次重試（2026-08-14 定則）。
+- **cmux pane 紀律（2026-09-07 修訂，pane 操作唯一 source）**：pane 至多一個（implementer），**不跑任何 `resize-pane`**。指令全用 `"$CMUX_BUNDLED_CLI_PATH"`，非 cmux 環境跳過；幾何事實一律取 `list-panes --json` 的 `pixel_frame`（`tree` 順序≠畫面順序）。瀏覽器一律是既有 pane 裡的 tab，**永不為瀏覽器搬動任何 pane**（開法見 /browser-tools）。只做兩件事：
+  1. **焦點拉回主 pane**：每次開／關 teammate pane、開瀏覽器 tab 之後 `focus-pane --pane <主pane>`（`identify | jq -r .caller.pane_ref` 取 ref）；開瀏覽器 tab 一律帶 `--focus false`。
+  2. **清殘殼**：**TaskStop 不保證自動關 pane**——收工後 `list-panes --json` 盤點，殘留用 `close-surface --surface <ref>` 清；大腦自己開的瀏覽器 tab 同樣要清。清完焦點拉回主 pane。
+- **收工**：teammate 驗收後用 **TaskStop**（吃工人名字）收掉。具名 teammate 的盤點讀 `~/.claude/teams/session-<id>/config.json`、進度用 SendMessage 問（TaskList/TaskOutput 對具名工人無效）；subagent 做完自行結束。
+- **done ≠ done**：工人回報後大腦必親自抽查＋親跑證據（/verify）。
+- **退件回饋迴路**：驗收不符或 reviewer 打回 → memory `rejection-log` 記一行（任務、原因、家族）；同家族累積成 pattern → 修規則源頭，修完刪記錄。
 
 ## 領域插件
 

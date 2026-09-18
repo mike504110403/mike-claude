@@ -64,7 +64,7 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 ### 5. 回報
 
-**在 cmux 內時（`$CMUX_BUNDLED_CLI_PATH` 存在）先把前端位址開成內嵌瀏覽器 tab**，作為 Mike 手測入口——開法（加 tab、不開新 pane）唯一依據全域 CLAUDE.md「Browser 自動化工具鏈」末條；前端 URL 取自宣告檔的 `frontend` 區塊。
+**在 cmux 內時（`$CMUX_BUNDLED_CLI_PATH` 存在）先把前端位址開成內嵌瀏覽器 tab**，作為 Mike 手測入口——開法（加 tab、不開新 pane）唯一依據 /browser-tools「cmux 內嵌瀏覽器」；前端 URL 取自宣告檔的 `frontend` 區塊。
 
 接著給出使用者接下來需要的東西，全部取自宣告檔：
 

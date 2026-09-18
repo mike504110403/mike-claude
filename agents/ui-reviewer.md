@@ -15,7 +15,7 @@ effort: medium
 
 ## 實測（依 /vue-dev 的三件證據）
 
-工具＝**playwright-cli**（shell 指令，工具選擇唯一依據全域 CLAUDE.md「Browser 自動化工具鏈」）。全程用自己的具名 session：`playwright-cli -s=<你的agent名> <指令>`，不用預設 session。登入用大腦提供的測試帳號 storage state（`state-load`），不用 persistent profile 殘留的登入態。收工 `close` 收掉自己的 session。
+工具＝**playwright-cli**（shell 指令，工具選擇唯一依據 /browser-tools）。全程用自己的具名 session：`playwright-cli -s=<你的agent名> <指令>`，不用預設 session。登入用大腦提供的測試帳號 storage state（`state-load`），不用 persistent profile 殘留的登入態。收工 `close` 收掉自己的 session。
 
 對 brief 的每條實測步驟：
 

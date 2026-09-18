@@ -87,3 +87,9 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
 - 主 checkout 不切分支、不直接改 code；一切改動發生在 worktree。
 - **清 worktree 前先 `git status`**：工人回報「乾淨」不一定準（實測遇過工人改完更好的版本沒 commit 就回報）。
 - 不 push 任何分支（push 只發生在 /ship）。清理只用 `-d` / `remove`，絕不 `-D` / `--force`（hook 硬擋）。
+
+## 階段顯示（statusline，2026-08-31 起；2026-09-18 自 CLAUDE.md 遷入）
+
+- 進有階段性的 lane（/solo、/feature、/bug、/mega）時宣告階段：`~/.claude/bin/phase set 'feature brief▸派工▸[驗收]▸review▸commit'`（單行、`▸` 串接、當前階段 `[]` 框、開頭 lane 名）。
+- 每次階段轉換重新 `phase set`；lane 收尾（commit 完）`~/.claude/bin/phase clear`。
+- 檔案跟 session 走（`~/.claude/phases/<session_id>`），statusline 自動附加顯示，超過 6 小時未更新自動隱藏；cmux 內同步 workspace 徽章（腳本內建）。

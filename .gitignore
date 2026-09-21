@@ -32,3 +32,6 @@ e2e/*
 .DS_Store
 # statusline 切換指標是各機器自己的執行期狀態
 statuslines/.active
+
+# Anthropic 內建 skills 同步快取（runtime 產物）
+skills/synced/

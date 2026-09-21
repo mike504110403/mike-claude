@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""usage-diag — 對一份 Claude Code transcript（JSONL）重跑 2026-09-10 的 context 預算診斷指標。
+
+用法：usage-diag <transcript.jsonl> [...更多檔]
+輸出：token 構成（cache read 佔比）、每請求 context 分佈（平均／>200K 比例）、
+      Read 位元組分佈（圖片／重複讀／>50KB 整檔）、Bash 次數與平均輸出。
+指標定義與基線見 memory `context-budget-diagnosis`。
+"""
+import json
+import os
+import sys
+from collections import Counter, defaultdict
+
+IMG_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf')
+
+
+def analyze(paths):
+    usage = Counter()
+    ctx_sizes = []
+    read_bytes = Counter()      # 分類 → bytes
+    read_paths = Counter()      # path → 次數
+    read_path_bytes = defaultdict(int)
+    tool_calls = Counter()
+    bash_out_bytes = []
+    pending = {}                # tool_use_id → (name, input)
+    for p in paths:
+        with open(p, encoding='utf-8') as f:
+            for line in f:
+                try:
+                    o = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                msg = o.get('message') or {}
+                if o.get('type') == 'assistant':
+                    u = msg.get('usage') or {}
+                    if u:
+                        cr = u.get('cache_read_input_tokens', 0) or 0
+                        cc = u.get('cache_creation_input_tokens', 0) or 0
+                        ip = u.get('input_tokens', 0) or 0
+                        op = u.get('output_tokens', 0) or 0
+                        usage['cache_read'] += cr
+                        usage['cache_create'] += cc
+                        usage['input'] += ip
+                        usage['output'] += op
+                        ctx_sizes.append(cr + cc + ip)
+                    for b in msg.get('content') or []:
+                        if isinstance(b, dict) and b.get('type') == 'tool_use':
+                            tool_calls[b.get('name')] += 1
+                            pending[b.get('id')] = (b.get('name'), b.get('input') or {})
+                elif o.get('type') == 'user':
+                    for b in msg.get('content') or []:
+                        if not (isinstance(b, dict) and b.get('type') == 'tool_result'):
+                            continue
+                        name, inp = pending.pop(b.get('id'), (None, {}))
+                        content = b.get('content')
+                        size = 0
+                        is_img = False
+                        if isinstance(content, str):
+                            size = len(content.encode('utf-8'))
+                        elif isinstance(content, list):
+                            for c in content:
+                                if isinstance(c, dict):
+                                    if c.get('type') == 'image':
+                                        is_img = True
+                                        size += len((c.get('source') or {}).get('data') or '')
+                                    else:
+                                        size += len(json.dumps(c, ensure_ascii=False).encode('utf-8'))
+                        if name == 'Read':
+                            fp = inp.get('file_path', '')
+                            read_paths[fp] += 1
+                            read_path_bytes[fp] += size
+                            if is_img or fp.lower().endswith(IMG_EXT):
+                                read_bytes['image'] += size
+                            else:
+                                read_bytes['text'] += size
+                            if read_paths[fp] > 1:
+                                read_bytes['repeat'] += size
+                            if size > 50 * 1024 and not is_img:
+                                read_bytes['over50k'] += size
+                                read_bytes['over50k_n'] += 1
+                        elif name == 'Bash':
+                            bash_out_bytes.append(size)
+    return usage, ctx_sizes, read_bytes, read_paths, tool_calls, bash_out_bytes
+
+
+def main():
+    paths = sys.argv[1:]
+    if not paths:
+        print(__doc__)
+        sys.exit(2)
+    usage, ctx, rb, rp, tc, bo = analyze(paths)
+    total = sum(usage.values()) or 1
+    n = len(ctx) or 1
+    print(f"transcript: {', '.join(os.path.basename(p) for p in paths)}")
+    print(f"請求數 {len(ctx)}；token 總量 {total/1e6:.1f}M")
+    for k in ('cache_read', 'cache_create', 'input', 'output'):
+        print(f"  {k:<13}{usage[k]/1e6:8.2f}M  {usage[k]/total*100:5.1f}%")
+    over200 = sum(1 for c in ctx if c > 200_000)
+    print(f"每請求 context：平均 {sum(ctx)/n/1000:.0f}K，中位 {sorted(ctx)[len(ctx)//2]/1000 if ctx else 0:.0f}K，"
+          f"最大 {max(ctx)/1000 if ctx else 0:.0f}K，>200K 佔 {over200/n*100:.0f}%")
+    rtotal = rb['image'] + rb['text'] or 1
+    print(f"Read：{sum(rp.values())} 次／{len(rp)} 個路徑，{rtotal/1024:.0f}KB；"
+          f"圖片 {rb['image']/rtotal*100:.0f}%，重複讀 {rb['repeat']/rtotal*100:.0f}%，"
+          f">50KB 整檔 {rb['over50k_n']} 次")
+    reps = [(p, c) for p, c in rp.items() if c > 1]
+    if reps:
+        print("  重複讀路徑（次數）：")
+        for p, c in sorted(reps, key=lambda x: -x[1])[:8]:
+            print(f"    {c}× {p}")
+    print("工具呼叫：" + "、".join(f"{k} {v}" for k, v in tc.most_common(8)))
+    if bo:
+        print(f"Bash：{len(bo)} 次，平均輸出 {sum(bo)/len(bo)/1024:.1f}KB，最大 {max(bo)/1024:.0f}KB")
+
+
+if __name__ == '__main__':
+    main()

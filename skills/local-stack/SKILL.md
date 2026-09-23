@@ -18,21 +18,6 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 ## 步驟
 
-### 0. 執行位置判定（PC 延伸機，2026-09-16 起；2026-09-17 起一律經 `pc-deploy`）
-
-宣告檔有 `pc` 區塊時，**不手工串 pc-reach／pc-push／pc-sync-stack／ssh**，一律一個指令：
-
-```
-~/.claude/bin/pc-deploy <group> [up|push|down|status|frontend-up|frontend-down] [--skip-push] [--skip-sync]
-```
-
-它自己讀宣告檔的 `pc` 區塊（host、root、repos、env、extra_sync、rewrites）與 `commands.*`，做完 pc-reach → 逐 repo pc-push（工作樹快照，含未 commit 改動）→ pc-sync-stack → ssh 帶 `pc.env` 在 `pc.root` 執行對應指令。**輸出第一行就是回報要用的「棧：PC（host）」或「棧：Mac（原因）」**，exit 1＝PC 不可達或無 pc 區塊→退回下方 Mac 流程（原流程不變，不重試、不等 PC），exit 0＝該動作在 PC 完成，exit 3＝推碼／同步失敗（不會在 PC 起舊碼），其餘＝遠端指令的 exit code。`up` 推全部 repo 並同步等 PC 起完；`push` 推全部 repo 後不等（PC 端 systemd 收到 hook 旗標約 15 秒後自動跑該群 up.sh，2026-09-17 波 7c）——改完程式碼要看畫面用 `push`，要立即拿到就緒證據用 `up`；`frontend-up` 只推宣告檔 frontend 區塊的前端 repo；`down`／`status`／`frontend-down` 不推碼——但**每個動作都同步 localstack/**（腳本住那裡，Mac 改了 PC 才跑得到新版）。`status` 先印 PC 端狀態檔（health.json 每 5 分鐘 timer 健檢、deploy/<group>.json 最近一次自動部署）再跑宣告檔 `ready_check.cmd`（與下方步驟 4 同源）。
-
-回報時所有 port、前端 URL、`env_override` 裡的 `localhost`／`127.0.0.1` 一律換成 PC 的 Tailscale IP（pc-deploy 就緒行會印；或 `ssh -G <pc.host> | awk '/^hostname /{print $2}'`），port 以 `pc.env` 為準（三群在 PC 同時常駐靠它錯埠：貴金屬 API 8180／WS 8181、回收群 PG 5433／Redis 6380、彩票不變），cmux 瀏覽器 tab 也開這個位址。Mac 端 Docker Desktop 不需開著。
-
-- 三群（彩票、貴金屬、回收）2026-09-17 起全容器化：up.sh 收尾自帶前端 dev server、status 納入判準、主機重開後靠 restart policy 自己回來（docker daemon 重啟實測三群全綠）。status 不綠才重跑 up。
-- 無 `pc` 區塊 → Mac 模式。**回報第一行固定寫「棧：PC（<host>）」或「棧：Mac（<原因>）」**，讓 Mike 與 /verify 知道證據來自哪台。PC 模式的 `wipe` 同樣先問 Mike（pc-deploy 不提供 wipe，要 wipe 就 ssh 手跑 `down.sh --wipe`）。
-
 ### 1. 找宣告檔
 
 從當前工作目錄逐層往上找 `.claude/localstack.json`，找到第一個就用。
@@ -78,7 +63,6 @@ description: 起／停／查地端全棧環境（後端＋周邊 infra），供�
 
 - **宣告檔是唯一事實來源。** 它與現況不符時（服務起不來、port 不對、帳號登不進去），修的是宣告檔或環境，不是在 skill 裡加專案分支。
 - **不要把專案知識寫進這個檔案。** 任何「如果是 X 專案就……」的判斷都是設計失敗的訊號。
-- **PC 模式不是專案知識。** `pc` 區塊是宣告檔的一部分，skill 只做 `root`→`pc.root` 前綴替換與 host 替換；up.sh 在 PC 跑不動時修的是該群 localstack 腳本或宣告檔，不在 skill 加分支。工具與 spec：`~/.claude/plans/pc-offload.md`。
 - **不要為了讓就緒判準過而放寬它。** 判準過不了代表環境真的沒好。
 - 地端環境的目的是**任何操作都不外溢到真實世界**。發現宣告檔的 `isolation` 漏列了對外連線，或有指向正式服務的開關預設開著，當場回報 Mike。
 

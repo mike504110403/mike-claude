@@ -33,7 +33,7 @@
 | 改動面 | 環境前提 | 驗收證據（大腦親跑） |
 | --- | --- | --- |
 | 後端 | 無 | 測試 ＋ build |
-| 前端 | **/local-stack 起地端棧**（Mac 或 PC `ai-pc-wsl`，由 skill 依 `pc-reach` 自選；「API 指向地端」同此定義） | typecheck ＋ **Mike 地端手測**（review chain 並行站）；/auto-e2e 僅 on-demand |
+| 前端 | **/local-stack 起地端棧**（「API 指向地端」同此定義） | typecheck ＋ **Mike 地端手測**（review chain 並行站）；/auto-e2e 僅 on-demand |
 | 前後端 | 同上，聯測走地端 | 兩者皆備；合併後依 /feature-flow 階段四重驗 |
 
 - 環境前提不成立 → 降級階梯（地端全棧 → 只起後端 → 靜讀＋跨端對照），**每降一階必在 wip.md 記驗證債**（為何降、替代證據、未驗清單、補驗腳本）；沒記＝那筆驗證永遠消失。

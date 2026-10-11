@@ -25,6 +25,11 @@ e2e/*
 !e2e/playwright.config.ts
 !bin/
 !bin/**
+# 跨機器參考：Mac 終端設定原檔、移植 prompt（2026-10-11）
+!terminal/
+!terminal/**
+!docs/
+!docs/**
 # projects/（transcripts 與 memory）一律不進版控（2026-08-07 Mike 裁示：memory 不上 git）
 # 放在最後才能蓋過上面的白名單
 .DS_Store

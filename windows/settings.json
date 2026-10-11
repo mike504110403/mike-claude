@@ -1,0 +1,144 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "PYTHONUTF8": "1"
+  },
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(go build*)",
+      "Bash(go vet*)",
+      "Bash(go test*)",
+      "Bash(go run*)",
+      "Bash(go mod tidy*)",
+      "Bash(gofmt*)",
+      "Bash(npm run*)",
+      "Bash(npm install*)",
+      "Bash(npm ci*)",
+      "Bash(docker compose*)",
+      "Bash(docker ps*)",
+      "Bash(docker logs*)",
+      "Bash(docker exec*)",
+      "Bash(psql*)",
+      "Bash(curl*)",
+      "Bash(make*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Bash(git rm*)",
+      "Bash(cat*)",
+      "Bash(ls*)",
+      "Bash(head*)",
+      "Bash(tail*)",
+      "Bash(wc*)",
+      "Bash(grep*)",
+      "Bash(rg*)",
+      "Bash(find*)",
+      "Bash(tree*)",
+      "Bash(jq*)",
+      "Bash(pg_isready*)",
+      "Bash(godot --headless --path . -s res://tests/run_tests.gd*)",
+      "Bash(godot --headless --path . --quit-after*)",
+      "Bash(godot --headless --path . --import*)",
+      "Bash(flutter test*)",
+      "Bash(flutter analyze*)",
+      "Bash(git checkout*)",
+      "Bash(git switch*)",
+      "Bash(git merge*)",
+      "Bash(git worktree*)",
+      "Bash(git fetch*)",
+      "Bash(python -m unittest discover tools/imgen*)",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__list_network_requests",
+      "mcp__chrome-devtools__get_network_request",
+      "mcp__chrome-devtools__list_console_messages",
+      "mcp__chrome-devtools__list_pages"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "model": "opus[1m]",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/User/.claude/hooks/bash_guard.py",
+            "timeout": 10,
+            "statusMessage": "檢查危險命令…"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/User/.claude/hooks/file_guard.py",
+            "timeout": 10,
+            "statusMessage": "檢查敏感檔案…"
+          }
+        ]
+      },
+      {
+        "matcher": "SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/User/.claude/hooks/send_guard.py",
+            "timeout": 10,
+            "statusMessage": "檢查回報格式…"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/User/.claude/hooks/format_on_save.py",
+            "timeout": 90,
+            "statusMessage": "自動 format…"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/User/.claude/hooks/report_clause.py",
+            "timeout": 5,
+            "statusMessage": "注入回報條款…"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "\"C:/Program Files/Git/bin/bash.exe\" C:/Users/User/.claude/statusline-dispatch.sh",
+    "padding": 0
+  },
+  "language": "chinese",
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark-ansi",
+  "remoteControlAtStartup": true,
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "autoUpdatesChannel": "latest"
+}

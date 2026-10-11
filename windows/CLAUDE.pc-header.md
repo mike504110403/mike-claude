@@ -1,0 +1,1 @@
+> **PC 版（Windows 11 原生，2026-10-11 移植）**：以下段落不適用——`~/.claude/PROJECTS.md` 專案代號表（PC 無此檔，專案路徑直接問 Mike）、`/local-stack` 地端棧（前端驗證退到降級階梯）、cmux pane／tmux／cmux 內嵌瀏覽器、`sips` 縮圖（改用 subagent 判讀，或 Python Pillow 縮圖）、graft hooks（PC 未裝）、`phase` 階段顯示。Shell 有 Git Bash（Bash 工具）與 PowerShell 兩種，hook 對兩者都守。「模型選配」的大腦模型在 PC 改用 `opus[1m]`（2026-10-11 Mike 裁示），不算違規。

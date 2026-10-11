@@ -53,14 +53,7 @@ INSTALL_NAME=小華 curl -fsSL https://raw.githubusercontent.com/mike504110403/m
 
 ### Windows 使用者
 
-tmux 只存在於 WSL（Windows 原生沒有 tmux），Claude Code 與這整套工作流都必須跑在 **WSL 內部**，不是 Windows 原生終端機。
-
-1. 安裝 WSL（PowerShell 系統管理員模式）：
-   ```powershell
-   wsl --install
-   ```
-2. 重開機後進入 WSL（預設 Ubuntu），在 WSL 內部照上面的一鍵安裝指令執行。
-3. Claude Code 也要裝在 WSL 內部執行，不要在 Windows 原生終端機跑。
+Windows 原生（不走 WSL、不用 tmux）的腳本與設定另放在 [`windows/`](windows/README.md)，安裝步驟與跟 Mac 版的差異見該目錄 README。`install.sh` 不適用於 Windows 原生。
 
 ## 安全預設
 
@@ -101,4 +94,4 @@ git -C ~/.claude checkout -- settings.json && git -C ~/.claude pull && bash ~/.c
 - 手動確認 `CLAUDE.md` 開頭的名字（若未設 `INSTALL_NAME`，仍是原文）
 - 視需求在 `settings.json` 手動加回 `permissions.defaultMode` / `model`（或直接用 `MIKE_CLAUDE_FULL=1` 重裝）
 - `/config` 內可開手機推播通知
-- Windows 使用者：Claude Code 需要在 WSL 內執行，不是 Windows 原生終端機
+- Windows 原生使用者：不跑 `install.sh`，改照 [`windows/README.md`](windows/README.md) 安裝

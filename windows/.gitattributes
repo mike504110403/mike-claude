@@ -1,0 +1,2 @@
+# PC 版腳本一律 LF：Git for Windows 預設 core.autocrlf=true，CRLF 會讓 shebang 與 bash 腳本出錯
+* text=auto eol=lf

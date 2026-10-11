@@ -1,0 +1,5 @@
+#!/bin/bash
+# 註冊項：ccstatusline（npm -g 安裝；statusline 環境的 PATH 不一定含 nvm bin，找不到就掃 nvm 目錄）
+bin=$(command -v ccstatusline) || bin=$(ls -t "$HOME"/.nvm/versions/node/*/bin/ccstatusline 2>/dev/null | head -1)
+[ -n "$bin" ] || { echo "ccstatusline 未安裝（npm install -g ccstatusline）"; exit 0; }
+exec "$bin"

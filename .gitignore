@@ -30,6 +30,10 @@ e2e/*
 !terminal/**
 !docs/
 !docs/**
+# Windows 原生版腳本與設定（2026-10-11 分流，見 windows/README.md）
+!windows/
+!windows/**
+windows/**/__pycache__/
 # projects/（transcripts 與 memory）一律不進版控（2026-08-07 Mike 裁示：memory 不上 git）
 # 放在最後才能蓋過上面的白名單
 .DS_Store

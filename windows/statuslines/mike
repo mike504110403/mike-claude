@@ -1,0 +1,3 @@
+#!/bin/bash
+# 註冊項：Mike 自製 Tokyo Night statusline
+exec "$HOME/.claude/statusline.sh"

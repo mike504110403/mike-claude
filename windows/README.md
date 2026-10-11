@@ -40,6 +40,22 @@ bash ~/.claude/bin/lint-rules                  # PASS
 bash ~/.claude/bin/tests/test_mutate_batch.sh  # 0 FAIL（i2 一項 SKIP）
 ```
 
+### 選配：CC 以管理員執行（離座可操作，2026-10-12 Mike 裁示 UAC 方案 A）
+
+UAC 視窗在安全桌面，CC 與手機都按不到。改成登入即以最高權限開 WezTerm，系統權限動作（安裝軟體、HKLM、系統 PATH、服務、帳號、防火牆、憑證、系統目錄、排程工作、防護設定等）由 `bash_guard` 的 `SYSTEM_ADMIN` 規則在 CC 內 ask；改 `~/.claude` 的 settings.json／hooks 也會 ask。
+
+**代價（security review 2026-10-12，Mike 裁示接受才裝）**：
+- CC 全程是管理員，hook 是唯一防線；先寫 `.ps1` 再執行之類「包一層」的指令 hook 看不進。
+- 本帳號的 UAC 實質弱化：提權 WezTerm 已改讀管理員專用設定（`C:\ProgramData\wezterm-admin\wezterm.lua`）、shell 加 `-NoProfile`、工作只有管理員能 `/run`，但 claude 執行檔與 `~/.claude` 仍在使用者可寫目錄——任何以你身分執行的非提權程式改了它們，下次登入就以管理員執行。
+
+```powershell
+# 管理員 PowerShell 執行一次（跳一次 UAC）；改了 ~/.wezterm.lua 後要重跑才會同步到管理員設定
+powershell -ExecutionPolicy Bypass -File $HOME\src\mike-claude\windows\admin-wezterm.ps1
+schtasks /run /tn WezTerm-Admin   # 同一個管理員 PowerShell 裡跑，立刻開一個管理員 WezTerm
+```
+
+確認：管理員 WezTerm 裡跑 `net session`，不報「存取被拒」即是管理員。
+
 ## 與 Mac 版的差異
 
 | 檔案 | 差異 | 原因 |
@@ -48,8 +64,8 @@ bash ~/.claude/bin/tests/test_mutate_batch.sh  # 0 FAIL（i2 一項 SKIP）
 | `settings.json` | model `opus[1m]` | Mike 2026-10-11 裁示（見 `CLAUDE.pc-header.md`） |
 | `settings.json` | 拿掉 claude-pet、cmux、graft hook；拿掉 gitkraken／swift-lsp／gopls-lsp plugin 與 marketplace；allow 拿掉未移植工具（`phase`、`trust-dir`、graft 4 條）；`python3` allow 改 `python`；拿掉空的 `footerLinksRegexes` | 工具或路徑在 PC 不存在 |
 | `settings.json` | 保留 `autoUpdatesChannel: "latest"` | PC 原本 settings.json 就有，移植時沿用 |
-| `hooks/bash_guard.py` | 加 `Remove-Item -Recurse -Force`（含縮寫）、`rd/del /s /q`（含 `/s/q` 連寫、引號包住）硬擋；`-Recurse`、`gci -Recurse \| Remove-Item`／`ForEach-Object { Remove-Item }` 詢問；Windows 的詢問排在所有 deny 之後 | PowerShell 工具也要守；詢問不能蓋掉 stash／clean／npx 的硬擋 |
-| `hooks/file_guard.py` | migrations 路徑也認 `\` | Windows 路徑 |
+| `hooks/bash_guard.py` | 加 `Remove-Item -Recurse -Force`（含縮寫）、`rd/del /s /q`（含 `/s/q` 連寫、引號包住）硬擋；`-Recurse`、`gci -Recurse \| Remove-Item`／`ForEach-Object { Remove-Item }` 詢問；Windows 的詢問排在所有 deny 之後；rm 旗標不分大小寫、認長旗標與縮寫（`-fR`、`--recursive --force`）；`SYSTEM_ADMIN` 系統權限動作詢問（安裝軟體與安裝檔、HKLM／HKCR／HKU、系統 PATH、服務、帳號、防火牆、根憑證、系統目錄寫入、排程工作、防護與開機設定）；改 `~/.claude` settings.json／hooks 詢問 | PowerShell 工具也要守；詢問不能蓋掉 stash／clean／npx 的硬擋；CC 以管理員執行時 UAC 不把關（Mac 版 rm 漏擋未修，見 ledger） |
+| `hooks/file_guard.py` | migrations 路徑也認 `\`；系統目錄（`C:\Windows`、`Program Files`、`ProgramData`）與 `~/.claude` settings.json／hooks 詢問 | Windows 路徑；CC 以管理員執行時 hosts 等系統檔無 UAC 把關 |
 | `hooks/format_on_save.py` | 用 `shutil.which` 完整路徑叫 formatter | prettier／npx 是 `.cmd` shim，裸名稱叫不起來且錯誤被吞 |
 | `hooks/report_clause.py` | stdout 強制 UTF-8 | 預設 cp950，中文條款送到 Claude 變亂碼 |
 | `hooks/test_bash_guard.py` | 路徑相對本檔、`sys.executable`、失敗時 exit 1；加 PowerShell／cmd 案例、review 回歸案例，另補 force push／stash／npx 等 Mac 版沒測的既有規則 | Mac 版寫死 `/Users/mike` 路徑；PC 新規則要有探針 |

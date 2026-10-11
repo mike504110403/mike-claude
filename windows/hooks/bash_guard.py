@@ -43,6 +43,82 @@ def windows_recursive_delete(cmd):
     return verdict
 
 
+# (?![.\w])：HKU.cache 這類檔名不算
+HIVE = r"(HKLM|HKEY_LOCAL_MACHINE|HKCR|HKEY_CLASSES_ROOT|HKU|HKEY_USERS)(?![.\w])"
+SYSTEM_ADMIN = re.compile("|".join([
+    r"\bwinget(\.exe)?\s+(--?\S+\s+)*(install|add|uninstall|remove|rm|upgrade|update|import|repair|configure)\b",
+    r"\bmsiexec\b",
+    r"\bchoco(\.exe)?\s+(install|uninstall|upgrade)\b",
+    r"\bSet-ExecutionPolicy\b(?![^;|&\n]*-Scope\s+Process\b)",
+    r"\breg(\.exe)?\s+(add|delete|copy|restore|load|unload)\s+[\"']?" + HIVE,
+    r"\breg(\.exe)?\s+import\b",
+    r"\bregedit(\.exe)?\b",
+    r"\bsc(\.exe)?\s+(config|create|delete|start|stop|pause|continue|failure|sdset|privs)\b",
+    r"\b(Set|New|Remove|Start|Stop|Restart|Suspend)-Service\b",
+    r"(?<![-\w])(spsv|sasv)\s",
+    r"\bnet(\.exe)?\s+(stop|start|pause|continue)\b",
+    r"\bnet(\.exe)?\s+(user|localgroup)\b[^;|&\n]*\s[/-]+(add|delete)\b",
+    r"\bschtasks(\.exe)?\s+[/-]+(create|delete|change)\b",
+    r"\b(Register|Unregister|Set)-ScheduledTask\b",
+    r"\b(bcdedit|dism|netsh|takeown|icacls)(\.exe)?\b",
+    r"\b(Set|Add|Remove)-MpPreference\b",
+    r"\b(Enable|Disable)-WindowsOptionalFeature\b",
+    r"\b(Add|Remove)-WindowsCapability\b",
+    r"\b(shutdown(\.exe)?\s|Restart-Computer\b|Stop-Computer\b)",
+    # machine 級環境變數（系統 PATH）
+    r"\bsetx(\.exe)?\b[^;|&\n]*\s[/-]+M\b",
+    r"SetEnvironmentVariable\b[^\n]*\bMachine\b",
+    # 直接跑安裝檔（winget 沒有的套件）
+    r"\.msi\b",
+    r"\bStart-Process\b[^;|&\n]*\.exe\b",
+    r"\.exe\b[^;|&\n]*\s[/-]{1,2}(quiet|qn|passive|VERYSILENT|SILENT|S)(?![\w/])",
+    # 防火牆、本機帳號（cmd 版 netsh／net user 在上面）
+    r"\b(New|Set|Remove|Enable|Disable|Rename|Copy)-NetFirewall\w+\b",
+    r"\b(New|Set|Remove|Enable|Disable|Rename)-LocalUser\b",
+    r"\b(Add|Remove)-LocalGroupMember\b",
+    # 全機信任憑證
+    r"\bcertutil(\.exe)?\b[^;|&\n]*[/-]+(addstore|delstore|importpfx)\b",
+    r"\bImport-(Pfx)?Certificate\b[^\n]*LocalMachine",
+]), re.IGNORECASE)
+
+HIVE_RE = re.compile(HIVE, re.IGNORECASE)
+REG_WRITE = re.compile(r"(?<![-\w])((Set|New|Remove|Rename|Copy|Move|Clear)-Item(Property)?|sp|si|ni|rp|ri)\s", re.IGNORECASE)
+# 寫入動作（重導、PowerShell 寫檔 cmdlet、cp/mv/tee/sed -i/rm、Python open）
+WRITE_VERB = re.compile(r"(?<![\d&])>(?!&|\s*(/dev/null|\$null|nul)\b)|\b(Add|Set|Clear)-Content\b|\bOut-File\b|\b(Copy|Move|Remove|New|Rename)-Item\b|"
+                        r"(?<![-\w])(cp|mv|tee|rm|ri|del|sc|ac)\s|\bsed\s+(-\w+\s+)*-i|\bopen\(|\bwrite", re.IGNORECASE)
+SYSTEM_DIR = re.compile(r"(?:[A-Za-z]:|/[a-z])[\\/]+(Windows|Program Files( \(x86\))?|ProgramData)\b", re.IGNORECASE)
+# 唯一防線本身：settings.json 與 hooks/
+GUARD_FILES = re.compile(r"\.claude[\\/]+(settings(\.local)?\.json|hooks[\\/])", re.IGNORECASE)
+
+# 前面不能是 - 或字母數字：排除 docker run --rm、git-rm 這類
+POSIX_RM_CMD = re.compile(r"(?<![-\w])rm(\.exe)?(?=\s)")
+
+
+def posix_rm(cmd):
+    """GNU rm 旗標：-r / -R / --recursive（長旗標可縮寫成唯一前綴），-f / --force；短旗標可合寫、可放在路徑後。
+    短旗標只認 GNU rm 字母集 [dfiIrRv]，含其他字母的（PowerShell 的 -Force、-Path）不算；只比前綴，-rf$x 照算。
+    回傳 "deny"（遞迴＋強制）、"ask"（只遞迴）或 None。"""
+    verdict = None
+    for m in POSIX_RM_CMD.finditer(cmd):
+        seg = re.split(r"[;|&\n]", cmd[m.end():], maxsplit=1)[0]
+        recurse = force = False
+        for tok in seg.split():
+            if tok == "--":
+                break
+            if tok.startswith("--"):
+                name = tok[2:].split("=", 1)[0].lower()
+                recurse = recurse or (name and "recursive".startswith(name))
+                force = force or (name and "force".startswith(name))
+            elif (fm := re.match(r"-([A-Za-z]+)", tok)) and set(fm.group(1)) <= set("dfiIrRv"):
+                recurse = recurse or "r" in fm.group(1).lower()
+                force = force or "f" in fm.group(1)
+        if recurse and force:
+            return "deny"
+        if recurse:
+            verdict = "ask"
+    return verdict
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -50,11 +126,12 @@ def main():
         sys.exit(0)
 
     cmd = (data.get("tool_input") or {}).get("command") or ""
+    # bash 反斜線續行接回同一行（rm x \⏎ -rf）
+    cmd = re.sub(r"\\\r?\n", " ", cmd)
 
-    # 硬擋：rm 帶有 r+f 組合旗標（rm -rf / -fr / -r -f ...）
-    if re.search(r"\brm\s+(-\w*r\w*\s+)*-\w*f", cmd) and re.search(r"\brm\s+(-\w*\s+)*-\w*r", cmd):
-        respond("deny", "硬擋：rm -rf 被全域規則禁止。請改用精確路徑逐一刪除，或請 Mike 手動執行。")
-    if re.search(r"\brm\s+-\w*(rf|fr)\w*\b", cmd):
+    # 硬擋：rm 帶有遞迴＋強制旗標（-rf / -fR / -r -f / --recursive --force ...）
+    rm_del = posix_rm(cmd)
+    if rm_del == "deny":
         respond("deny", "硬擋：rm -rf 被全域規則禁止。請改用精確路徑逐一刪除，或請 Mike 手動執行。")
 
     # 硬擋：force push
@@ -104,7 +181,7 @@ def main():
         respond("ask", "警示：git reset --hard 會丟棄未 commit 改動。確定？")
 
     # 強制詢問：遞迴刪除（rm -r 不帶 -f 也要問）與 find -delete
-    if re.search(r"\brm\s+(-\w*\s+)*-\w*r", cmd):
+    if rm_del == "ask":
         respond("ask", "警示：遞迴刪除。目標路徑確認過了嗎？")
     if re.search(r"\bfind\b.*\s-delete\b", cmd):
         respond("ask", "警示：find -delete 批次刪除。先跑一次不帶 -delete 確認清單。")
@@ -115,6 +192,15 @@ def main():
     if re.search(r"\b(npm|pnpm|yarn)\s+run\s+(commit|push|deploy|release|publish)\b", cmd) or \
        re.search(r"\bmake\s+(deploy|release|publish|push)\b", cmd):
         respond("ask", "警示：此 script 名稱疑似含 commit/push/部署動作，hook 看不進內容。先讀 script 確認實際做什麼。")
+
+    # 強制詢問：系統權限動作（PC 上 CC 以管理員執行，沒有 UAC 把關，改由這裡在 CC 內確認——手機 Remote Control 可按）
+    if SYSTEM_ADMIN.search(cmd) or (HIVE_RE.search(cmd) and REG_WRITE.search(cmd)) or \
+       (SYSTEM_DIR.search(cmd) and WRITE_VERB.search(cmd)):
+        respond("ask", "系統權限動作（CC 以管理員執行、無 UAC 把關）：安裝／移除軟體、改 HKLM 登錄、服務、排程工作、開機或防護設定。確認要執行？")
+
+    # 強制詢問：改 hook 本身或 settings.json（agent 被擋後改防線繞過）
+    if GUARD_FILES.search(cmd) and WRITE_VERB.search(cmd):
+        respond("ask", "警示：要改 ~/.claude 的 settings.json 或 hooks（全域防線本身）。確認？")
 
     # 強制詢問：nginx / 執行 migration
     if re.search(r"\bnginx\b", cmd, re.IGNORECASE):

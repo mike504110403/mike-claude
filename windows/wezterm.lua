@@ -21,6 +21,7 @@ config.font = wezterm.font_with_fallback {
 }
 config.font_size = 12 -- Mac 是 12 × cmux 全域 120%；看了再調
 config.line_height = 1.15 -- adjust-cell-height = 15%
+config.cursor_blink_rate = 0 -- 關閉游標閃爍（Claude Code 會要求閃爍游標，預設 800ms 太刺眼）
 config.color_scheme = 'Catppuccin Macchiato'
 config.colors = {
   background = mantle, -- Macchiato 深一階

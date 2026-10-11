@@ -36,8 +36,11 @@ Register-ScheduledTask -TaskName 'WezTerm-Admin' -Action $action -Trigger $trigg
 $svc = New-Object -ComObject Schedule.Service
 $svc.Connect()
 $task = $svc.GetFolder('\').GetTask('WezTerm-Admin')
-$task.SetSecurityDescriptor('D:P(A;;FA;;;BA)(A;;FA;;;SY)', 0)
+# 0x10 = TASK_DONT_ADD_PRINCIPAL_ACE：不讓排程器自動補回執行者（使用者）的 ACE
+$task.SetSecurityDescriptor('D:P(A;;FA;;;BA)(A;;FA;;;SY)', 0x10)
+$sd = $svc.GetFolder('\').GetTask('WezTerm-Admin').GetSecurityDescriptor(4)
+if ($sd -notmatch '^D:PA?I?\(A;;FA;;;BA\)\(A;;FA;;;SY\)$') { throw "task SD not applied: $sd" }
 
 Get-ScheduledTask -TaskName 'WezTerm-Admin' | Select-Object TaskName, State, @{n = 'RunLevel'; e = { $_.Principal.RunLevel } }
-"task SD: " + $task.GetSecurityDescriptor(4)
+"task SD: $sd"
 icacls $dir

@@ -169,6 +169,21 @@ CASES = [
     ("Set-ExecutionPolicy -Scope Process Bypass", "allow"),
     ("rm -f obj/HKU.cache", "allow"),
     ("dotnet run", "allow"),
+    # migration：執行才問，檔名／測試名不問
+    ("sed -n 1,40p internal/store/migrate.go", "allow"),
+    ("git add internal/store/migrate.go internal/store/migrations/0001_init.sql", "allow"),
+    ("go test -run TestMigrate ./internal/store/...", "allow"),
+    ("cat db/migrations/0002_add.sql", "allow"),
+    ("goose -dir migrations sqlite3 x.db up", "ask"),
+    ("migrate -path db/migrations -database $DB up", "ask"),
+    ("alembic upgrade head", "ask"),
+    ("python manage.py migrate", "ask"),
+    ("bin/rails db:migrate", "ask"),
+    ("npx prisma migrate deploy", "deny"),
+    ("pnpm prisma migrate deploy", "ask"),
+    ("make migrate-up", "ask"),
+    ("npm run migrate", "ask"),
+    ("flyway migrate", "ask"),
 ]
 
 fails = 0

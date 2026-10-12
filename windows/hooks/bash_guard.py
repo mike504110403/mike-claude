@@ -89,6 +89,16 @@ WRITE_VERB = re.compile(r"(?<![\d&])>(?!&|\s*(/dev/null|\$null|nul)\b)|\b(Add|Se
 SYSTEM_DIR = re.compile(r"(?:[A-Za-z]:|/[a-z])[\\/]+(Windows|Program Files( \(x86\))?|ProgramData)\b", re.IGNORECASE)
 # 唯一防線本身：settings.json 與 hooks/
 GUARD_FILES = re.compile(r"\.claude[\\/]+(settings(\.local)?\.json|hooks[\\/])", re.IGNORECASE)
+# 執行 migration 才問：工具名在指令位置且帶子指令／旗標，或框架的 migrate 子指令；
+# 檔名（migrate.go、migrations/0001.sql）、測試名（TestMigrate）不算。
+MIGRATION_RUN = re.compile("|".join([
+    r"(?:^|[\s;&|(])(?:goose|alembic|flyway|dbmate|migrate)(?:\.exe)?\s+(?:-|up\b|down\b|apply\b|upgrade\b|downgrade\b|"
+    r"migrate\b|redo\b|reset\b|force\b|goto\b|status\b|stamp\b|clean\b|repair\b|baseline\b)",
+    r"\bmanage\.py\s+migrate\b",
+    r"\bdb:migrate\b",
+    r"\b(?:prisma|knex|sequelize|typeorm|drizzle-kit)\s+(?:migrate|migration:run|db:migrate|push)\b",
+    r"(?:^|[\s;&|(])(?:make|npm\s+run|pnpm(?:\s+run)?|yarn)\s+[\w:-]*migrat",
+]), re.IGNORECASE)
 
 # 前面不能是 - 或字母數字：排除 docker run --rm、git-rm 這類
 POSIX_RM_CMD = re.compile(r"(?<![-\w])rm(\.exe)?(?=\s)")
@@ -205,7 +215,7 @@ def main():
     # 強制詢問：nginx / 執行 migration
     if re.search(r"\bnginx\b", cmd, re.IGNORECASE):
         respond("ask", "全域規則：nginx 相關操作需 Mike 確認。")
-    if re.search(r"\b(migrate|alembic|flyway|goose)\b", cmd, re.IGNORECASE):
+    if MIGRATION_RUN.search(cmd):
         respond("ask", "全域規則：DB migration 相關操作需 Mike 確認。")
 
     sys.exit(0)

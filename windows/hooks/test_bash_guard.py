@@ -190,6 +190,22 @@ CASES = [
     ('$env:Path = "C:\\Program Files\\Go\x08in;$env:Path"; Copy-Item a b', "allow"),
     ('export PATH="/c/Program Files/Go/bin:$PATH" && cp x.dll "/c/Program Files/App/"', "ask"),
     ('cp evil.exe "C:/Windows/System32/"', "ask"),
+    # rm -r 目標整個在 Claude 暫存區內才放行
+    ('SCR="/c/Users/User/AppData/Local/Temp/claude/C--Users-User/abc/scratchpad/probe"; rm -r -- "$SCR" 2>/dev/null; mkdir -p "$SCR"', "allow"),
+    ('rm -r /c/Users/User/AppData/Local/Temp/claude/C--Users-User/abc/scratchpad/fmtcheck', "allow"),
+    ('rm -r "C:\\Users\\User\\AppData\\Local\\Temp\\claude\\C--Users-User\\abc\\scratchpad\\x"', "allow"),
+    ('rm -r /tmp/tmp.AbC123', "allow"),
+    ('rm -r /c/Users/User/AppData/Local/Temp/claude/C--Users-User/abc', "ask"),
+    ('rm -r /c/Users/User/AppData/Local/Temp/claude/C--Users-User/abc/scratchpad/../../x', "ask"),
+    ('rm -r /tmp/*', "ask"),
+    ('rm -r "$UNSET_VAR"', "ask"),
+    ('rm -r /tmp/x /c/Users/User/repo', "ask"),
+    ('rm -rf /c/Users/User/AppData/Local/Temp/claude/C--Users-User/abc/scratchpad/p', "deny"),
+    # PowerShell／cmd 遞迴刪除同樣只放行暫存區
+    ('Remove-Item -Recurse C:\\Users\\User\\AppData\\Local\\Temp\\claude\\C--Users-User\\abc\\scratchpad\\probe', "allow"),
+    ('Remove-Item -Recurse C:\\Users\\User\\repo\\x', "ask"),
+    ('rd /s C:\\Users\\User\\AppData\\Local\\Temp\\claude\\C--Users-User\\abc\\scratchpad\\probe', "allow"),
+    ('rd /s C:\\Users\\User\\repo', "ask"),
 ]
 
 fails = 0

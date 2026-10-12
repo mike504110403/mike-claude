@@ -33,7 +33,11 @@ def windows_recursive_delete(cmd):
         force = "q" in cmd_flags or any(len(f) >= 2 and "force".startswith(f) for f in ps_flags)
         if recurse and force:
             return "deny"
-        if recurse:
+        # 旗標：PowerShell 的 -X、cmd 的 /s /q（可連寫）；其餘都算刪除目標（含 /c/... 這種 Git Bash 路徑）
+        targets = [t for t in seg.split()
+                   if t != "--" and not t.startswith("-") and not re.fullmatch(r"(?:/[A-Za-z])+", t)
+                   and not re.match(r"\d*>", t)]
+        if recurse and not (targets and all(in_scratch(t, cmd) for t in targets)):
             verdict = "ask"
     # 管線批次刪除（gci -Recurse | Remove-Item、| ForEach-Object { Remove-Item ... }），等同 find -delete
     # 刪除指令只在「指令位置」才算：緊接 | 或 {，或經 xargs / ForEach-Object / % 轉呼
@@ -114,21 +118,44 @@ def posix_rm(cmd):
     for m in POSIX_RM_CMD.finditer(cmd):
         seg = re.split(r"[;|&\n]", cmd[m.end():], maxsplit=1)[0]
         recurse = force = False
+        targets = []
+        flags_done = False
         for tok in seg.split():
-            if tok == "--":
-                break
-            if tok.startswith("--"):
+            if not flags_done and tok == "--":
+                flags_done = True
+                continue
+            if not flags_done and tok.startswith("--"):
                 name = tok[2:].split("=", 1)[0].lower()
                 recurse = recurse or (name and "recursive".startswith(name))
                 force = force or (name and "force".startswith(name))
-            elif (fm := re.match(r"-([A-Za-z]+)", tok)) and set(fm.group(1)) <= set("dfiIrRv"):
+            elif not flags_done and (fm := re.match(r"-([A-Za-z]+)", tok)) and set(fm.group(1)) <= set("dfiIrRv"):
                 recurse = recurse or "r" in fm.group(1).lower()
                 force = force or "f" in fm.group(1)
+            elif not re.match(r"\d*>", tok):
+                targets.append(tok)
         if recurse and force:
             return "deny"
-        if recurse:
+        if recurse and not (targets and all(in_scratch(t, cmd) for t in targets)):
             verdict = "ask"
     return verdict
+
+
+# Claude 的暫存區：session scratchpad 底下的子目錄（AppData/Local/Temp/claude/<proj>/<session>/scratchpad/<x>）與 Git Bash 的 /tmp/<x>
+SCRATCH_PREFIX = re.compile(r"^(?:/[a-z]|[a-z]:)/users/[^/]+/appdata/local/temp/claude/[^/]+/[^/]+/scratchpad/[^/]+|^/tmp/[^/]+", re.IGNORECASE)
+SHELL_ASSIGN = re.compile(r"""(?:^|[;&\s])([A-Za-z_]\w*)=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))""")
+
+
+def in_scratch(token, cmd):
+    """rm -r 的目標是否整個落在 Claude 暫存區內（同一指令中的簡單變數指派會先展開）。"""
+    vals = {m.group(1): next(g for g in m.groups()[1:] if g is not None) for m in SHELL_ASSIGN.finditer(cmd)}
+    t = token.strip("\"'")
+    t = re.sub(r"\$\{?([A-Za-z_]\w*)\}?", lambda mm: vals.get(mm.group(1), "\0"), t)
+    if "\0" in t or "*" in t or "?" in t:
+        return False
+    t = t.replace("\\", "/")
+    if any(part == ".." for part in t.split("/")):
+        return False
+    return bool(SCRATCH_PREFIX.match(t))
 
 
 def main():

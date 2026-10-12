@@ -87,6 +87,8 @@ REG_WRITE = re.compile(r"(?<![-\w])((Set|New|Remove|Rename|Copy|Move|Clear)-Item
 WRITE_VERB = re.compile(r"(?<![\d&])>(?!&|\s*(/dev/null|\$null|nul)\b)|\b(Add|Set|Clear)-Content\b|\bOut-File\b|\b(Copy|Move|Remove|New|Rename)-Item\b|"
                         r"(?<![-\w])(cp|mv|tee|rm|ri|del|sc|ac)\s|\bsed\s+(-\w+\s+)*-i|\bopen\(|\bwrite", re.IGNORECASE)
 SYSTEM_DIR = re.compile(r"(?:[A-Za-z]:|/[a-z])[\\/]+(Windows|Program Files( \(x86\))?|ProgramData)\b", re.IGNORECASE)
+# PATH 類環境變數設定只是讀取路徑（例：export PATH="/c/Program Files/Go/bin:$PATH"），判斷系統目錄前先拿掉
+PATH_ASSIGN = re.compile(r"""(?:\bexport\s+|\$env:)?\b(?:PATH|Path|GOROOT|GOPATH)\s*\+?=\s*(?:"[^"]*"|'[^']*'|[^\s;&|]*)""")
 # 唯一防線本身：settings.json 與 hooks/
 GUARD_FILES = re.compile(r"\.claude[\\/]+(settings(\.local)?\.json|hooks[\\/])", re.IGNORECASE)
 # 執行 migration 才問：工具名在指令位置且帶子指令／旗標，或框架的 migrate 子指令；
@@ -205,7 +207,7 @@ def main():
 
     # 強制詢問：系統權限動作（PC 上 CC 以管理員執行，沒有 UAC 把關，改由這裡在 CC 內確認——手機 Remote Control 可按）
     if SYSTEM_ADMIN.search(cmd) or (HIVE_RE.search(cmd) and REG_WRITE.search(cmd)) or \
-       (SYSTEM_DIR.search(cmd) and WRITE_VERB.search(cmd)):
+       (SYSTEM_DIR.search(PATH_ASSIGN.sub(" ", cmd)) and WRITE_VERB.search(cmd)):
         respond("ask", "系統權限動作（CC 以管理員執行、無 UAC 把關）：安裝／移除軟體、改 HKLM 登錄、服務、排程工作、開機或防護設定。確認要執行？")
 
     # 強制詢問：改 hook 本身或 settings.json（agent 被擋後改防線繞過）

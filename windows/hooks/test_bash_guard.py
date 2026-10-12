@@ -184,6 +184,12 @@ CASES = [
     ("make migrate-up", "ask"),
     ("npm run migrate", "ask"),
     ("flyway migrate", "ask"),
+    # PATH 設定含 Program Files 不算動系統目錄；真的寫進系統目錄仍要問
+    ('export PATH="/c/Program Files/Go/bin:$PATH" && cd /x && python -c "open(\'a.txt\',\'w\')"', "allow"),
+    ('export PATH="/c/Program Files/Go/bin:$PATH" && go test ./... && cp a b', "allow"),
+    ('$env:Path = "C:\\Program Files\\Go\x08in;$env:Path"; Copy-Item a b', "allow"),
+    ('export PATH="/c/Program Files/Go/bin:$PATH" && cp x.dll "/c/Program Files/App/"', "ask"),
+    ('cp evil.exe "C:/Windows/System32/"', "ask"),
 ]
 
 fails = 0

@@ -27,3 +27,16 @@
 禁止直接 rm -rf、force push、git clean -f、git branch -D、git worktree remove --force、git add . 或 -A/--all。精確逐檔 stage；讀清間接 script 的副作用。Hooks 是有限 guardrail，必須經 /hooks trust 才會執行，沒有執行證據不得宣稱防護 active。
 
 未完成工作記 repo .codex/wip.md，交接含已驗與未驗項、回復/續作步驟及待裁示；全部完成時只提示新 chat，不增加持久交接檔。模型與 Context 的取捨依實際量測，不預設固定 cache 比例或圖片必須委派。
+
+
+## 工程收尾
+
+/feature 完成回報第一句包含 lane、結論與改動面，接著依序用五點：
+
+1. **改了什麼**：列出實際變更。
+2. **為什麼**：說明對應需求與理由。
+3. **影響面**：指出受影響的模組、介面或工作流。
+4. **驗證證據**：列出實際 tests、build/validate、review 結果與必要限制；未跑或未通過要明示。
+5. **還可以做什麼**：給下一步建議，待授權事項明列，不自動擴大 scope。
+
+五點後另附四項實際狀態，每項標「已／未／不適用」：commit（已提交才附 hash）、本地合併（目標 branch）、push（remote/branch；執行 push 後以 ls-remote 比對 hash 一致才能寫已推）、套用設定（適用時列部署目標與證據）。commit、本地合併、push 與套用設定各自獨立，不能用「完成」暗示其他階段已做或其他裝置已同步；詢問「推了嗎」不等於 push 授權。/quick、/solo 保留短段式回報例外。

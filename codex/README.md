@@ -14,6 +14,12 @@
 
 `worker` 與 `explorer` 是本套刻意提供的 ownership/唯讀角色 profile，會覆蓋同名 built-in；沿用父模型。唯讀 reviewer 的 TOML 是角色預設，指令也禁止修改。父回合 live sandbox/approval override 可能覆蓋角色預設；派工時核實有效權限，不視 TOML 為絕對隔離。App 不做 self handoff，也不把 subtasks 變成 sidebar user chats。工具以當回合暴露的 API 為準，不依賴 Claude helper 或固定模型名。
 
+## 完成回報與設定狀態
+
+/feature 的五點收尾格式以來源 [assets/AGENTS.md「工程收尾」](assets/AGENTS.md#工程收尾) 為唯一規則；feature skill 引用全域 AGENTS 的該節，拆開部署後仍可使用。/quick、/solo 保留短段式例外。回報依實際 Git 狀態與執行證據，分別說明 commit、本地合併、push、套用設定；只有 push 後 remote hash 核對一致才能寫已推。
+
+來源 repo `~/.claude/codex/` 的提交或本地合併不代表遠端已更新，也不代表已套用到 Codex home/skills 目標。套用設定須實際執行安裝並核對部署結果，hooks 還需 review/trust；回報不得假設其他裝置已同步。詢問 push 狀態不改變既有授權要求。
+
 ## 安裝與檢查
 
 在 source repo 執行：

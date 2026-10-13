@@ -3,6 +3,7 @@
 *
 !.gitignore
 !CLAUDE.md
+!AGENTS.md
 !settings.json
 !statusline.sh
 !statusline-dispatch.sh
@@ -34,6 +35,13 @@ e2e/*
 !windows/
 !windows/**
 windows/**/__pycache__/
+# Codex 原生工作流來源；安裝後的帳號、會話、備份不是來源資產
+!codex/
+!codex/**
+codex/**/__pycache__/
+codex/**/.pytest_cache/
+codex/.tmp/
+codex/.install-state/
 # projects/（transcripts 與 memory）一律不進版控（2026-08-07 Mike 裁示：memory 不上 git）
 # 放在最後才能蓋過上面的白名單
 .DS_Store

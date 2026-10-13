@@ -3,6 +3,7 @@ import json
 import re
 import shlex
 import sys
+import os
 from pathlib import Path
 from common import PolicyError, changed_paths, read_event, sensitive
 
@@ -14,7 +15,7 @@ def shell_boundaries(command):
     index = 0
     while index < len(command):
         char = command[index]
-        if char == "\\" and quote != "'" and index + 1 < len(command):
+        if os.name != "nt" and char == "\\" and quote != "'" and index + 1 < len(command):
             following = command[index + 1]
             if following != "\n":
                 result.extend((char, following))
@@ -35,7 +36,9 @@ def shell_boundaries(command):
 
 
 def command_segments(command):
-    lexer = shlex.shlex(shell_boundaries(command), posix=True, punctuation_chars=";&|()")
+    if os.name == "nt" and "`" in command:
+        raise PolicyError("PowerShell backtick expansion requires native review")
+    lexer = shlex.shlex(shell_boundaries(command), posix=os.name != "nt", punctuation_chars=";&|()")
     lexer.whitespace_split = True
     lexer.commenters = ""
     current = []
@@ -46,7 +49,7 @@ def command_segments(command):
                     yield current
                     current = []
             else:
-                current.append(token)
+                current.append(token.strip("\"'") if os.name == "nt" else token)
         if current:
             yield current
     except ValueError as exc:
@@ -84,7 +87,17 @@ def prohibited(tokens):
     if not tokens:
         return None
     executable = Path(tokens[0]).name
+    if os.name == "nt":
+        executable = executable.lower()
+        for suffix in (".exe", ".cmd", ".bat", ".ps1"):
+            if executable.endswith(suffix):
+                executable = executable[:-len(suffix)]
+                break
     args = tokens[1:]
+    if os.name == "nt" and executable in ("remove-item", "ri", "del", "erase", "rd", "rmdir", "rm"):
+        options = {arg.lower() for arg in args}
+        if any(arg.startswith("-r") or arg == "/s" for arg in options) and any(arg.startswith("-f") or arg == "/q" for arg in options):
+            return "Direct recursive forced deletion is forbidden"
     if executable == "npx":
         return "npx is forbidden; use an installed project binary or the lockfile's package manager"
     if executable == "rm":

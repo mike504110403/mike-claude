@@ -67,7 +67,11 @@ class ReviewRegressions(unittest.TestCase):
                 self.assertEqual(json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"],"deny")
         for command in ("printf 'git status\nrm -rf doomed'", 'printf "git status\nrm -rf doomed"', "printf safe\\\nrm -rf doomed"):
             with self.subTest(command=command):
-                self.assertEqual(json.loads(hook("guard.py",self.root,command,"Bash").stdout),{})
+                value = json.loads(hook("guard.py",self.root,command,"Bash").stdout)
+                if os.name == "nt" and command.startswith("printf safe"):
+                    self.assertEqual(value["hookSpecificOutput"]["permissionDecision"], "deny")
+                else:
+                    self.assertEqual(value,{})
 
     def test_clean_exclude_values_and_pathspec_are_not_options(self):
         for command in ("git clean -fd -- -n doomed", "git clean -fd -e -n", "git clean -fd --exclude -n", "git clean -fde-n", "git clean -fd --exclude=-n"):
@@ -93,6 +97,7 @@ class ReviewRegressions(unittest.TestCase):
         receipt=Path(next(line[14:] for line in result.stdout.splitlines() if line.startswith("Backup index: ")))
         return receipt
 
+    @unittest.skipIf(os.name == "nt", "POSIX modes; Windows DACL coverage in test_windows")
     def test_install_restore_preserve_existing_permissions_and_fresh_sensitive_modes(self):
         receipt=self.prepare_restore()
         self.assertEqual(stat.S_IMODE((self.home / "hooks.json").stat().st_mode),0o600)
@@ -149,9 +154,9 @@ class ReviewRegressions(unittest.TestCase):
             with self.assertRaises(OSError):module.apply(changes,backups,backup_paths,index,receipt)
         self.assertTrue(fired)
         self.assertTrue(modes)
-        self.assertEqual(set(modes),{0o600})
+        self.assertEqual(set(modes),{0o666} if os.name == "nt" else {0o600})
         self.assertEqual(guidance.read_bytes(),b"existing")
-        self.assertEqual(stat.S_IMODE(guidance.stat().st_mode),0o640)
+        self.assertEqual(stat.S_IMODE(guidance.stat().st_mode),0o666 if os.name == "nt" else 0o640)
         self.assertFalse((self.home / "agents" / "code-reviewer.toml").exists())
         self.assertFalse((self.home / "agents" / "db-reviewer.toml").exists())
 

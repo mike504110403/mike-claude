@@ -46,7 +46,8 @@ def safe_path(raw, cwd):
         raise PolicyError("Path escapes cwd: {}".format(raw))
     cursor = candidate
     while cursor != root:
-        if cursor.is_symlink():
+        if cursor.is_symlink() or (os.name == "nt" and cursor.exists() and
+                getattr(cursor.lstat(), "st_file_attributes", 0) & 0x400):
             raise PolicyError("Symlink path is forbidden: {}".format(raw))
         cursor = cursor.parent
     return candidate

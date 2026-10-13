@@ -1,6 +1,6 @@
 # Codex 原生工作流
 
-這是 `~/.claude` repo 中獨立版控的 Codex package，Python 3.9+、標準庫，部署命令針對 macOS/Linux，不下載依賴。來源與部署分離：source 是 `codex/assets/`；安裝只管理 AGENTS.md、這套 skills、native agents、專用 `workflow/mike/hooks/` 和合併後的 hooks 定義。既有 config.toml、模型、MCP、auth、sessions 和 runtime state 不會複製或修改。
+這是 `~/.claude` repo 中獨立版控的 Codex package，Python 3.9+、標準庫，支援 macOS/Linux 與原生 Windows，不下載依賴。來源與部署分離：source 是 `codex/assets/`；安裝只管理 AGENTS.md、這套 skills、native agents、專用 `workflow/mike/hooks/` 和合併後的 hooks 定義。既有 config.toml、模型、MCP、auth、sessions 和 runtime state 不會複製或修改。
 
 ## 原生適配
 
@@ -75,3 +75,13 @@ PostToolUse 只 format 已存在的 changed files，包括 Vue，delete 不執�
 ## 官方契約
 
 本版核對日期：2026-10-14。[Hooks](https://learn.chatgpt.com/docs/hooks)、[native subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)、[managed worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees)、[code review](https://learn.chatgpt.com/docs/code-review?surface=app)、[skills 指令設計](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)。Python 3.9 缺 tomllib 時 validator 使用本套有限 schema，不假裝提供通用 TOML parser；Python 3.11+ 另用 tomllib 核對。
+
+## Windows 原生安裝
+
+使用本機 Python、明確的 --codex-home 與 --skills-dir，不切換 WSL。Windows hook 命令使用 Windows command-line quoting（fixtures 經 cmd.exe 驗證）；guard 辨識 .exe/.cmd/.bat/.ps1、Windows 路徑及直接 Remove-Item/rmdir 的遞迴強制刪除，含 backtick 的命令保守拒絕。這仍不是完整 PowerShell parser；變數、alias、wrapper、間接執行仍依 native sandbox/approval。
+
+Windows 不以 chmod 的 0600/0700 宣稱私密性。temporary 在寫入內容前設定 DACL，備份目錄、receipt、新 hooks/manifest 僅 Owner Rights、SYSTEM、Administrators 可存取；既有檔案的 DACL 與 inheritance 狀態保留。receipt 留存原/部署 DACL，restore 遇到 ACL 變更拒絕。未變動 Codex home 本身的 ACL。拒絕 destination/source reparse points（含 junction）。
+
+Windows formatter 使用已存在 Node 與 cwd/node_modules/prettier/package.json 的本機 bin entry；不執行 .cmd shim、不下載，解析後必須仍在 cwd。gofmt 使用 PATH 已安裝的 native executable。
+
+原生 fixtures 驗證空白路徑 hook 命令、ACL、備份還原、ACL 漂移拒絕、零變更重跑、直接命令 guard 與 local Node formatter。POSIX shebang/mode fixtures 在 Windows 明確略過；裝置無 symlink privilege 時不宣稱實體 symlink 測試通過，另用 reparse mock 驗證拒絕。macOS/Linux 本次未重跑。安裝與 trust 分開，必須在新 Codex 會話 /hooks review/trust，不編輯 trust state 或使用 bypass。

@@ -41,4 +41,4 @@
 - 不搬 trust-dir、cmux 幾何、SendMessage 參數 guard、固定模型/cache 比例或強制圖片委派假設。
 - Graft 用按需建圖與過期查核；原 Claude lifecycle 接線未照搬，不宣稱自動 Stop hook 重建已啟用。通知、寵物及 UI 偏好交各裝置原生功能。
 - 原 mutate helper 改為保留原 bytes 的手工變異流程；mobile audit 改為原生取證與本機可用 scanners，不附舊四個簡單 regex scanner。兩者保留驗證目的，不宣稱原腳本已部署。
-- macOS 資產檢查與臨時 fixtures 是本套證據範圍；Linux 未在本輪實跑，Windows 原生 runtime 尚未驗收。安裝入口仍以 macOS/Linux 文件為準，Claude windows/ 不等於 Codex Windows 支援。
+- macOS 資產檢查與臨時 fixtures 是本套證據範圍；Linux 未在本輪實跑，Windows 已補原生命令、ACL、備份還原與 formatter fixtures，邊界見 README Windows 節。實體 symlink privilege 與目標 Codex hooks trust/實際觸發仍須分別核實，Claude windows/ 不等於 Codex Windows 支援。

@@ -3,6 +3,7 @@ import json
 import shutil
 import subprocess
 import sys
+import os
 from pathlib import Path
 from common import PolicyError, changed_paths, read_event, safe_path, sensitive
 
@@ -25,13 +26,32 @@ def main():
                 binary = shutil.which("gofmt")
                 args = [binary, "-w", str(path)] if binary else None
             elif path.suffix in PRETTIER_SUFFIXES:
-                binary = root / "node_modules" / ".bin" / "prettier"
-                resolved = binary.resolve()
-                try:
-                    resolved.relative_to(root)
-                except ValueError:
-                    raise PolicyError("Formatter symlink escapes cwd")
-                args = [str(binary), "--write", str(path)] if binary.is_file() else None
+                if os.name == "nt":
+                    # Run the local package's JS entry through Node; never execute
+                    # a .cmd shim or search a global/downloaded prettier.
+                    package = root / "node_modules" / "prettier"
+                    metadata = package / "package.json"
+                    node = shutil.which("node")
+                    args = None
+                    if metadata.is_file():
+                        metadata.resolve().relative_to(root)
+                        value = json.loads(metadata.read_text(encoding="utf-8"))
+                        entry = value.get("bin")
+                        entry = entry.get("prettier") if isinstance(entry, dict) else entry
+                        if not isinstance(entry, str) or not entry:
+                            raise PolicyError("Local prettier has no valid bin entry")
+                        binary = (package / entry).resolve()
+                        binary.relative_to(root)
+                        if binary.is_file() and node:
+                            args = [node, str(binary), "--write", str(path)]
+                else:
+                    binary = root / "node_modules" / ".bin" / "prettier"
+                    resolved = binary.resolve()
+                    try:
+                        resolved.relative_to(root)
+                    except ValueError:
+                        raise PolicyError("Formatter symlink escapes cwd")
+                    args = [str(binary), "--write", str(path)] if binary.is_file() else None
             else:
                 continue
             if args is None:
@@ -43,7 +63,7 @@ def main():
             messages.append("Formatted {}".format(path))
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "\n".join(messages)}}))
         return 0
-    except (PolicyError, OSError, subprocess.SubprocessError) as exc:
+    except (PolicyError, OSError, ValueError, subprocess.SubprocessError) as exc:
         reason = "Formatting incomplete: {}".format(exc)
         print(json.dumps({"decision": "block", "reason": reason, "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": reason}}))
         print(reason, file=sys.stderr)

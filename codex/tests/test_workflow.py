@@ -59,8 +59,8 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(snapshot(self.root), installed)
         self.assertIn("0 file changes", self.install().stdout)
         receipt = self.receipt(result)
-        self.assertEqual(stat.S_IMODE(receipt.stat().st_mode), 0o600)
-        self.assertEqual(stat.S_IMODE(receipt.parent.stat().st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(receipt.stat().st_mode), 0o666 if os.name == "nt" else 0o600)
+        self.assertEqual(stat.S_IMODE(receipt.parent.stat().st_mode), 0o777 if os.name == "nt" else 0o700)
 
     def test_unknown_hooks_config_auth_untouched_and_copied_hooks_work(self):
         self.home.mkdir()
@@ -149,6 +149,7 @@ class InstallerTests(unittest.TestCase):
         self.assertNotEqual(cli(*self.args,"--replace-existing","--apply").returncode,0)
         self.assertEqual(snapshot(self.root),before)
 
+    @unittest.skipIf(os.name == "nt", "Device lacks symlink privilege; mock reparse checks covered in test_windows")
     def test_source_symlink_refused_zero_write(self):
         copied=self.root / "source-copy"
         shutil.copytree(PACKAGE,copied,ignore=shutil.ignore_patterns("__pycache__"))
@@ -178,6 +179,7 @@ class InstallerTests(unittest.TestCase):
         self.assertNotEqual(cli(*self.args,"--replace-existing","--apply").returncode,0)
         self.assertEqual(snapshot(self.root),before)
 
+    @unittest.skipIf(os.name == "nt", "Device lacks symlink privilege; mock reparse checks covered in test_windows")
     def test_unsafe_symlinks_and_source_overlap_refused(self):
         outside=self.root / "outside"
         outside.mkdir()
@@ -230,6 +232,7 @@ class HookTests(unittest.TestCase):
         self.assert_denied("*** Begin Patch\n*** Update File: x\n*** Move to: .env\n@@\n-x\n+y\n*** End Patch","apply_patch")
         self.assert_denied("*** Begin Patch\n*** Delete File: auth.json\n*** End Patch","apply_patch")
 
+    @unittest.skipIf(os.name == "nt", "Device lacks symlink privilege; mock reparse checks covered in test_windows")
     def test_bad_payload_patch_and_symlink_deny(self):
         for payload in ("garbage", "[]", '{"hook_event_name":"PreToolUse","tool_name":"apply_patch","tool_input":{"file_path":"a"}}'):
             result=subprocess.run([sys.executable,str(HOOKS / "guard.py")],input=payload,text=True,capture_output=True)
@@ -250,6 +253,7 @@ class HookTests(unittest.TestCase):
         binary.chmod(0o755)
         return binary
 
+    @unittest.skipIf(os.name == "nt", "POSIX executable/symlink fixture; Windows coverage in test_windows")
     def test_formatter_changed_files_vue_move_delete_with_local_binary(self):
         self.fake_prettier()
         for name in ("a.vue","new.ts","unchanged.ts"):
@@ -261,6 +265,7 @@ class HookTests(unittest.TestCase):
         self.assertIn("FORMATTED",(self.root / "new.ts").read_text())
         self.assertEqual((self.root / "unchanged.ts").read_text(),"original")
 
+    @unittest.skipIf(os.name == "nt", "POSIX executable/symlink fixture; Windows coverage in test_windows")
     def test_formatter_failure_missing_and_escaping_symlink_visible(self):
         (self.root / "a.vue").write_text("value")
         patch="*** Begin Patch\n*** Update File: a.vue\n@@\n-value\n+edit\n*** End Patch"
@@ -276,6 +281,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(escaped.returncode,2)
         self.assertIn("escapes",escaped.stderr)
 
+    @unittest.skipIf(os.name == "nt", "POSIX executable/symlink fixture; Windows coverage in test_windows")
     def test_formatter_gofmt_and_unsafe_changed_paths(self):
         tools=self.root / "tools"
         tools.mkdir()
@@ -293,6 +299,7 @@ class HookTests(unittest.TestCase):
         self.assertEqual(unsafe.returncode,2)
         self.assertIn("traversal",unsafe.stderr)
 
+    @unittest.skipIf(os.name == "nt", "POSIX executable/symlink fixture; Windows coverage in test_windows")
     def test_formatter_safe_local_symlink_and_legacy_alias(self):
         binary=self.fake_prettier()
         real=binary.parent / "formatter.py"

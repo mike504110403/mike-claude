@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "source_base": "5008475f519fc8526ec46736b53952a62a938c55",
+  "source_skill_count": 40,
+  "skills": [
+    {
+      "name": "auto-e2e",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "brief",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "browser-tools",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "bruno-sync",
+      "mode": "ported"
+    },
+    {
+      "name": "bug",
+      "mode": "ported"
+    },
+    {
+      "name": "code-review",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "codebase-design",
+      "mode": "ported"
+    },
+    {
+      "name": "crawl4ai",
+      "mode": "ported"
+    },
+    {
+      "name": "diagnosing-bugs",
+      "mode": "ported"
+    },
+    {
+      "name": "domain-modeling",
+      "mode": "ported"
+    },
+    {
+      "name": "feature",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "feature-flow",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "flutter-tester",
+      "mode": "ported"
+    },
+    {
+      "name": "graft",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "grill-with-docs",
+      "mode": "ported"
+    },
+    {
+      "name": "grilling",
+      "mode": "ported"
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "mode": "ported"
+    },
+    {
+      "name": "local-stack",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "lottery-proddata",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "mega",
+      "mode": "ported"
+    },
+    {
+      "name": "office-hours",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "owasp-mobile-security-checker",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "pdf",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "playwright-cli",
+      "mode": "ported"
+    },
+    {
+      "name": "prototype",
+      "mode": "ported"
+    },
+    {
+      "name": "quick",
+      "mode": "ported"
+    },
+    {
+      "name": "research",
+      "mode": "ported"
+    },
+    {
+      "name": "resolving-merge-conflicts",
+      "mode": "ported"
+    },
+    {
+      "name": "review-chain",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "setup-pre-commit",
+      "mode": "ported"
+    },
+    {
+      "name": "ship",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "solo",
+      "mode": "ported"
+    },
+    {
+      "name": "statusline-switch",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "sync-dev",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "tdd",
+      "mode": "ported"
+    },
+    {
+      "name": "verify",
+      "mode": "ported"
+    },
+    {
+      "name": "vue-dev",
+      "mode": "ported"
+    },
+    {
+      "name": "vue-ui-patterns",
+      "mode": "ported"
+    },
+    {
+      "name": "wip",
+      "mode": "native-adapted"
+    },
+    {
+      "name": "writing-great-skills",
+      "mode": "ported"
+    }
+  ],
+  "agents": [
+    "worker",
+    "explorer",
+    "code-reviewer",
+    "security-reviewer",
+    "db-reviewer",
+    "brief-reviewer"
+  ],
+  "platform_evidence": {
+    "macos": "asset and temporary fixture checks; optional external tool workflows require local prerequisites",
+    "linux": "portable source; not executed on Linux",
+    "windows": "native runtime not validated; installer remains macOS/Linux documented scope"
+  }
+}

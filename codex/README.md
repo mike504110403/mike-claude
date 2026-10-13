@@ -22,6 +22,8 @@
 
 ## 安裝與檢查
 
+本套包含 40 個 skills 與 6 個 native agent profiles。對照、原生替代與裝置前提見 [MIGRATION.md](MIGRATION.md)，清單由 [migration.json](migration.json) 與 validator 核對。可攜 skills 不代表外部工具、地端棧、帳號或資料副本已建立。
+
 在 source repo 執行：
 
 ```sh
@@ -64,7 +66,7 @@ python3 codex/install.py --restore /path/to/codex-home/workflow/mike/backups/ID/
 
 PreToolUse 吃 stdin JSON，canonical `Bash` 與 `apply_patch` 的 `tool_input.command`；Edit/Write matcher aliases 受支援，亦接受 legacy file_path input。成功只回 `{}`，保留 native approval；拒絕回 supported deny，從不回 unsupported ask。普通 push 可通過，仍須 Mike 明確授權 /ship。nginx/migration 人類 gate 在 AGENTS/skills，不能由 hook 產生批准。
 
-Guard 阻擋直接 rm recursive+force、force/mirror push（含 `+refspec`）、destructive git clean、branch -D、forced worktree remove、git add ./-A/--all，接受 Git global options。git clean dry-run（含 -nf）可以通過；所有非 dry-run clean 視為有刪除風險，因 repo 可以設定 requireForce=false。真實未引用 newline 視為 command boundary，引用內 newline 與 escaped continuation 保留 shell 意義；clean 的 -- 後 pathspec 與 -e/--exclude 值不當作 dry-run options。patch 解析 multi-file Add/Update/Delete/Move，檢查 traversal、cwd escape、symlink 與 `.env` 真值/credentials/auth/private keys、大小寫一致的 `.codex` policy 與 deployed custom home 自保；核對實際 file/ancestor identity 及 hook hardlinks；`.env.example/sample/template` 可改。畸形輸入與 unsafe patch 會 deny。
+Guard 阻擋直接 rm recursive+force、force/mirror push（含 `+refspec`）、destructive git clean、branch -D、forced worktree remove、git add ./-A/--all、stash 變更操作與 npx，接受 Git global options；stash list/show 可讀。git clean dry-run（含 -nf）可以通過；所有非 dry-run clean 視為有刪除風險，因 repo 可以設定 requireForce=false。真實未引用 newline 視為 command boundary，引用內 newline 與 escaped continuation 保留 shell 意義；clean 的 -- 後 pathspec 與 -e/--exclude 值不當作 dry-run options。patch 解析 multi-file Add/Update/Delete/Move，檢查 traversal、cwd escape、symlink 與 `.env` 真值/credentials/auth/private keys、大小寫一致的 `.codex` policy 與 deployed custom home 自保；核對實際 file/ancestor identity 及 hook hardlinks；`.env.example/sample/template` 可改。畸形輸入與 unsafe patch 會 deny。
 
 這是有限 direct-command guardrail，**不是完整 shell 安全邊界**。變數、別名、wrapper、shell scripts、Python/其他語言 I/O、MCP 與 Bash 寫敏感檔等繞行不保證攔截；需靠 sandbox、approval、任務授權與審查。讀清間接 scripts 才執行。
 

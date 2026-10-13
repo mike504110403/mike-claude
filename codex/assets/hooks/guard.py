@@ -85,6 +85,8 @@ def prohibited(tokens):
         return None
     executable = Path(tokens[0]).name
     args = tokens[1:]
+    if executable == "npx":
+        return "npx is forbidden; use an installed project binary or the lockfile's package manager"
     if executable == "rm":
         flags = []
         for item in args:
@@ -109,6 +111,8 @@ def prohibited(tokens):
     if index >= len(args):
         return None
     action, rest = args[index], args[index + 1:]
+    if action == "stash" and (not rest or rest[0] not in ("list", "show")):
+        return "Stash mutations are forbidden: the stack is shared across worktrees; use a scoped backup"
     if action == "push" and any(x.startswith(("--force", "--mirror")) or x.startswith("-") and not x.startswith("--") and "f" in x or x.startswith("+") for x in rest):
         return "Force/mirror push is forbidden"
     if action == "clean" and not clean_dry_run(rest):

@@ -1,0 +1,9 @@
+# Riverpod 測試
+
+依專案鎖定的Riverpod版本查override與container API。不要mock provider本身，override其服務／repository依賴，以container.read/listen觀測public state。
+
+一般每test建立ProviderContainer，addTearDown(container.dispose)。需測dispose時用明確單一owner，只dispose一次；如果helper已註冊teardown就不能額外手動再dispose。autoDispose provider需要生命週期時維持subscription並關閉。
+
+Async provider先觀測loading，await其future後觀測data／error；用Completer讓loading可穩定檢查。refresh／mutation驗真正需要的state transition，避免直接改notifier私有state製造通過。除非版本支援並有目的，不用任意Future.delayed作同步。
+
+resource cleanup以真生命週期事件觸發，觀測dependency契約；helper、overrides與notifier生成語法必須對目前版本，不直接搬另一專案deep imports。

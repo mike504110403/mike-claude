@@ -1,0 +1,58 @@
+{
+  "commands": {
+    "up": {
+      "cmd": "",
+      "cwd": ".",
+      "path_type": "relative",
+      "shell": ""
+    },
+    "down": {
+      "cmd": "",
+      "cwd": ".",
+      "path_type": "relative",
+      "shell": ""
+    },
+    "status": {
+      "cmd": "",
+      "cwd": ".",
+      "path_type": "relative",
+      "shell": ""
+    }
+  },
+  "ready_check": {
+    "cmd": "",
+    "cwd": ".",
+    "path_type": "relative",
+    "shell": "",
+    "success_criteria": {
+      "exit_code": 0,
+      "stdout_contains": []
+    },
+    "attempts": 3,
+    "interval_seconds": 2,
+    "timeout_seconds": 30
+  },
+  "services": [],
+  "frontend": {
+    "url": "",
+    "env_override": {},
+    "api_routing_evidence": ""
+  },
+  "credentials": {
+    "local_secret_reference": ""
+  },
+  "isolation": {
+    "outbound_connections": [],
+    "disabled_side_effects": []
+  },
+  "known_limitations": [],
+  "prod_data": {
+    "snapshot_observed_at": "",
+    "source_summary": "",
+    "database_version": "",
+    "sql_mode": "",
+    "equivalence_cmds": [],
+    "rehearsal_checks": [],
+    "refresh_policy": ""
+  }
+}

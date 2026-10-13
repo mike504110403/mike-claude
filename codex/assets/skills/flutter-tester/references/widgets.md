@@ -1,0 +1,9 @@
+# Widget 測試與資源還原
+
+在testWidgets callback內拿到tester後設定view.physicalSize與devicePixelRatio，並addTearDown(resetPhysicalSize/resetDevicePixelRatio)。不要在沒有tester作用域的setUp直接用tester。尺寸選需求要測的viewport，不把所有UI固定桌面尺寸。
+
+ProviderScope override依賴，MaterialApp/Router及localizations沿repo wrapper。優先語義finder／已存在key，真有穩定定位需要且在範圍內才加source key。tap／enterText後pump；有限動畫可pumpAndSettle，持續動畫或loading用有界pump，避免永遠等不完。
+
+Completer控制初載與完成，分別驗loading/data/error/empty。debugDefaultTargetPlatformOverride在addTearDown還原，其他全域state、GetIt、streams/controller也還原。測導航用既有真router setup或相容fake，以route／可見畫面結果判定，不捏造FakeGoRouter框架類別。
+
+widget disposal可pump另一個widget移除原樹；失敗時teardown仍需執行。timeout、overflow及console失敗要具體報告，不能以pump未throw代替畫面正確。

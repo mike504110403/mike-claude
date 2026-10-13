@@ -2,6 +2,20 @@
 
 Claude Code + tmux 的個人工作流設定：lane 化派工流程（quick/solo/feature/bug/mega）、review agents、防護 hooks、tmux 狀態列整合 phase 顯示、自訂 statusline。這份 repo 是可攜的安裝來源，任何人都能一鍵裝到自己的機器上並客製化。
 
+## Codex 原生版本
+
+Codex 的來源放在 [`codex/`](codex/README.md)，在同一個 repo 版控。它使用 Codex 原生 subagents、受管理的 worktree、diff review 與 sandbox/approval，保留任務範圍、驗收與 push 授權紀律；五條 lane 的細節按 Codex 執行方式編寫。
+
+```bash
+# 先檢查預計部署內容（不寫檔）
+python3 codex/install.py
+
+# 查看安裝選項；套用與替換既有資產的步驟見 codex/README.md
+python3 codex/install.py --help
+```
+
+Codex 安裝器需要 Python 3.9+，獨立部署到 Codex 的資產目錄。根 `install.sh` 負責原有的 Claude 安裝流程。
+
 ## 一鍵安裝
 
 macOS 或 Linux/WSL：

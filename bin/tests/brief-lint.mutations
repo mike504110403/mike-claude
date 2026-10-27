@@ -1,0 +1,180 @@
+# 必須透過 bin/tests/run_brief_lint_dogfood.sh 跑，勿直接對 worktree 執行
+# cwd 刻意指到不存在的路徑：直接對 worktree 跑（沒帶 --cwd 覆寫）會在解析期就以
+# 「目標檔不存在」exit 2，把上面這行約定變成機制，不是只能靠人記得。
+cwd: /nonexistent-use-run_brief_lint_dogfood.sh
+test: bash bin/tests/test_brief_lint.sh
+
+id: control
+file: bin/brief-lint
+sed: s/return 1 if problems else 0/return 0/
+expect: red
+
+id: M-missing-file
+file: bin/brief-lint
+sed: s/if not os.path.isfile(full):/if False:/
+expect: red
+
+id: M-line-out-of-range
+file: bin/brief-lint
+sed: s/if start < 1 or top > n:/if False:/
+expect: red
+
+id: M-deny-list
+file: bin/brief-lint
+sed: s/if is_denied(cmd):/if False:/
+expect: red
+
+id: M-skip-flag
+file: bin/brief-lint
+sed: s/if any(mk in combined for mk in SKIP_MARKERS):/if False:/
+expect: red
+
+id: M-section-scope
+file: bin/brief-lint
+sed: s/inside = ln.startswith("## " + heading_prefix)/inside = True/
+expect: red
+
+id: M-zero-match
+file: bin/brief-lint
+sed: s/return not stdout.strip()/return False/
+expect: red
+
+id: M-ref-dedupe
+file: bin/brief-lint
+sed: s/if ref in seen:/if False:/
+expect: red
+
+id: M-tests-count
+file: bin/brief-lint
+sed: s/tests = sum(1 for h in hits if is_test_path(h.split(":", 1)\[0\]))/tests = 0/
+expect: red
+
+id: M-placeholder
+file: bin/brief-lint
+sed: s/if PLACEHOLDER_RE.search(cmd):/if False:/
+expect: red
+
+id: M-zero-q-flag
+file: bin/brief-lint
+sed: s/if (short & GREP_NO_STDOUT_SHORT) or any(f in long_ for f in GREP_NO_STDOUT_LONG):/if False:/
+expect: red
+
+id: M-zero-count-rule
+file: bin/brief-lint
+sed: s/return all(ln.rsplit(":", 1)\[-1\].strip() == "0" for ln in lines)/return False/
+expect: red
+
+id: M-deny-first-tokens
+file: bin/brief-lint
+sed: s/if tok and os.path.basename(tok) in DENY_FIRST_TOKENS:/if False:/
+expect: red
+
+id: M-deny-patterns
+file: bin/brief-lint
+sed: s/return any(p.search(cmd) for p in DENY_PATTERNS)/return False/
+expect: red
+
+id: M-host-tld
+file: bin/brief-lint
+sed: s/if path.lower().rsplit(".", 1)\[-1\] in HOST_TLDS:/if False:/
+expect: red
+
+id: M-host-at
+file: bin/brief-lint
+sed: s/if "@" in path:/if False:/
+expect: red
+
+id: M-range-end
+file: bin/brief-lint
+sed: s/top = max(start, int(end)) if end else start/top = start/
+expect: red
+
+id: M-allow-gate-removed
+file: bin/brief-lint
+sed: s/if not is_allowed(cmd):/if False:/
+expect: red
+
+id: M-allow-all-to-true
+file: bin/brief-lint
+sed: s/return all(seg_allowed(i, s) for i, s in enumerate(segs))/return True/
+expect: red
+
+id: M-allow-all-to-any
+file: bin/brief-lint
+sed: s/return all(seg_allowed(i, s) for i, s in enumerate(segs))/return any(seg_allowed(i, s) for i, s in enumerate(segs))/
+expect: red
+
+id: M-allow-unsafe
+file: bin/brief-lint
+sed: s/if unsafe or not segs:/if False:/
+expect: red
+
+id: M-allow-cd-first-only
+file: bin/brief-lint
+sed: s/if idx == 0 and CD_SEGMENT_RE.fullmatch(seg):/if CD_SEGMENT_RE.fullmatch(seg):/
+expect: red
+
+id: M-stdin-inherit
+file: bin/brief-lint
+sed: s/stdin=subprocess.DEVNULL,/stdin=None,/
+expect: red
+
+id: M-env-deny
+file: bin/brief-lint
+sed: s/if any(DENY_ENV_RE.fullmatch(n) for n in env_names(seg)):/if False:/
+expect: red
+
+id: M-flag-exec-pattern
+file: bin/brief-lint
+sed: s/--?(?:exec|toolexec|vettool)/--?(?:zzz)/
+expect: red
+
+id: M-bash-dotdot
+file: bin/brief-lint
+sed: s/ or "\.\." in path//
+expect: red
+
+id: M-bash-segment-match
+file: bin/brief-lint
+sed: s/return any(d in ("test", "tests") for d in parts\[:-1\]) or parts\[-1\].startswith("test_")/return any("test" in d for d in parts[:-1]) or "test_" in parts[-1]/
+expect: red
+
+id: M-python-literal
+file: bin/brief-lint
+sed: s#python3 (?:bin/brief-lint|#python3 \\S*(?:bin/brief-lint|#
+expect: red
+
+id: M-zero-last-segment
+file: bin/brief-lint
+sed: s/^        return first$/        return cmd/
+expect: red
+
+id: M-quote-blind-scanner
+file: bin/brief-lint
+sed: s/if c in "'\\"":/if False:/
+expect: red
+
+id: M-env-ignorecase
+file: bin/brief-lint
+sed: s/^    re.I,$/    0,/
+expect: red
+
+id: M-deny-fix-update
+file: bin/brief-lint
+sed: s/--fix\\b/--zzz\\b/
+expect: red
+
+id: M-deny-segment-scope
+file: bin/brief-lint
+sed: s/if cmd_re.match(bare) and flag_re.search(bare):/if flag_re.search(cmd):/
+expect: red
+
+id: M-bash-dollar
+file: bin/brief-lint
+sed: s/ or "\$" in path//
+expect: red
+
+id: M-pre-rule-removed
+file: bin/brief-lint
+sed: s/--pre\\b"),/--zzz\\b"),/
+expect: red

@@ -1,0 +1,556 @@
+#!/usr/bin/env python3
+"""brief-lint — 把 brief 的 A／B／C 家族檢查機械化。
+
+用法：brief-lint <brief.md> --repo <dir> [--run] [--timeout 秒，預設 120]
+
+輸出三段：[refs]（檔案:行號引用是否存在）、[cmds]（驗收標準 inline code 指令，
+--run 才實跑）、[callers]（範圍節內 Name( 呼叫點枚舉），最後一行 summary: problems=<N>。
+[cmds] 判定順序：DENIED → PLACEHOLDER → 白名單 → NOT_RUN／RUN。指令依 && || ; | 切段，
+所有段都命中 ALLOW_RULES（開頭的 cd <路徑> 段視為允許）才可執行；否則印 UNLISTED
+（文字片段或有副作用的指令：不執行、不算 problem，有沒有 --run 都一樣）。
+威脅模型：brief 由大腦撰寫、--repo 是信任的 worktree；本工具防的是 brief 文字「不小心」
+造成寫檔或執行，不防惡意作者；build 類產物（如 go build 預設輸出）落在 worktree 屬可接受。
+ZERO_MATCH 只看「最後一個非 cd 的指令（依 && || ; 切）的管線第一段」是否為 grep／rg／
+git [-C dir] grep；`grep x f | wc -l` 這種管線的 stdout 非空，維持不判 ZERO_MATCH。
+Exit：0 無 problem／1 有 problem／2 參數錯、brief 不存在、--repo 不是目錄。
+"""
+import argparse
+import os
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+
+# deny-list：命中者永不執行（印 DENIED）。比對對象是「指令的每個子段」
+# （以 && || ; | 切開）的首 token，以及整條字串的 pattern。
+DENY_FIRST_TOKENS = (
+    "rm", "mutate", "psql", "mysql", "supabase", "docker", "curl", "ssh", "kubectl",
+    "sudo", "kill", "pkill", "killall", "systemctl", "launchctl", "redis-cli", "nginx",
+    "alembic", "flyway", "goose", "npx", "find", "xargs",
+)
+DENY_PATTERNS = (
+    # git 子命令前允許夾 -C <dir> 等任意旗標
+    re.compile(r"\bgit\s(?:.*\s)?(?:checkout|reset|push|clean|restore|stash|commit|merge|rebase)\b"),
+    re.compile(r"\bgit\s(?:.*\s)?branch\s+-D\b"),
+    re.compile(r"bin/mutate"),
+    re.compile(r"migrate"),
+    re.compile(r"\b(?:npm|pnpm|yarn)\s+run\s+\S*(?:deploy|push|release)"),
+    re.compile(r"\bmake\s+\S*(?:deploy|push|release)"),
+    re.compile(r"\bbash\s+-c\b"),
+    re.compile(r"\bsh\s+-c\b"),
+    re.compile(r"\beval\b"),
+    # 白名單內指令的寫檔／執行旗標：git diff --output=f、rg --pre <cmd>（--pre-glob 也被它擋）
+    re.compile(r"(?:^|\s)--output(?:\b|File|-)"),
+    re.compile(r"\brg\s(?:.*\s)?--pre\b"),
+    # 執行／外部程式旗標（整條都擋，不分子命令）
+    re.compile(r"(?:^|\s)--?(?:exec|toolexec|vettool)\b"),
+    re.compile(r"\bpytest\s(?:.*\s)?-p\b"),
+    re.compile(r"\bcargo\s(?:.*\s)?--config\b"),
+    # 會改寫原始碼／快照／產出檔案的旗標
+    re.compile(r"(?:^|\s)--fix\b"),
+    re.compile(r"(?:^|\s)(?:-u|--update(?:Snapshot)?)\b"),
+    re.compile(r"(?:^|\s)--?(?:cover|cpu|mem|block|mutex)profile\b"),
+    re.compile(r"(?:^|\s)--junitxml\b"),
+    re.compile(r"(?:^|\s)--basetemp\b"),
+)
+# 只對「該段」生效的旗標 deny：(段首指令 regex, 旗標 regex)。按段比對，避免
+# `make test && git -C . log` 這類無關段的旗標誤殺；-o 不整條擋，否則 grep -o 也會被殺。
+DENY_SEGMENT_RULES = (
+    (re.compile(r"git\s(?:-C\s+\S+\s+)?grep\b"), re.compile(r"(?:^|\s)(?:-[A-Za-z]*O[A-Za-z]*\b|--open)")),
+    (re.compile(r"make\b"), re.compile(r"(?:^|\s)(?:-f|--file|--makefile|-C|--directory)\b")),
+    (re.compile(r"make\b"), re.compile(r"(?:^|\s)\w+=")),
+    (re.compile(r"(?:go\s+(?:test|build|vet)|pytest|python3?\s+-m\s+pytest)\b"), re.compile(r"(?:^|\s)--?o\b")),
+    (re.compile(r"go\s+test\b"), re.compile(r"(?:^|\s)--?c\b")),
+)
+# 前置環境變數：名稱命中者整條 DENIED（會改變工具行為或載入外部程式碼）；
+# 其餘變數名放行（XXX_TEST_DSN=... go test 是常見寫法）
+DENY_ENV_RE = re.compile(
+    r"GIT_\w*|BASH_ENV|ENV|LD_\w*|DYLD_\w*|PYTHON(?:STARTUP|HOME|INSPECT)|\w*_CONFIG_PATH"
+    r"|GOFLAGS|MAKEFLAGS|MAKEFILES|CARGO_\w*|RUSTC_WRAPPER|RUSTFLAGS|PAGER|GIT_PAGER|EDITOR|NODE_OPTIONS"
+    r"|npm_config_\w*|PYTEST_ADDOPTS|PATH|SHELL|PROMPT_COMMAND|PS4",
+    re.I,
+)
+# 含 <name> 佔位符的指令不執行（否則 bash 會把 <x> 當重導向，跑出假 FAIL）
+PLACEHOLDER_RE = re.compile(r"<[^>]+>")
+# grep 類旗標：這些旗標下「stdout 為空」不代表零命中
+GREP_NO_STDOUT_SHORT = set("qlL")
+GREP_NO_STDOUT_LONG = ("--quiet", "--silent", "--files-with-matches", "--files-without-match")
+HOST_TLDS = ("com", "net", "org", "io", "tw", "dev", "app")
+
+MAX_LINE = 160
+CALLER_LIST_MAX = 20
+SKIP_MARKERS = ("--- SKIP", "no tests to run", "no test files")
+
+REF_RE = re.compile(
+    r"(?<![A-Za-z0-9_.+@/~:-])"
+    r"((?:~|/)?[A-Za-z0-9_.+@-]+(?:/+[A-Za-z0-9_.+@-]+)*)"
+    r":(\d+)(?:-(\d+))?(?!\d)"
+)
+INLINE_RE = re.compile(r"`([^`\n]+)`")
+CALL_RE = re.compile(r"((?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*)\(")
+ENV_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+# 可執行白名單：指令依 && || ; | 切段後，每段（略過前置 VAR=val）都要命中其中一條
+# （regex 對單段、錨定段首）才會被 --run 執行。其餘一律 UNLISTED。
+ALLOW_RULES = tuple(re.compile(p) for p in (
+    r"go (?:test|vet|build)\b",
+    r"(?:pnpm|npm|yarn) (?:test|run (?:test|typecheck|lint|build)|exec (?:vue-tsc|tsc|eslint|vitest))\b",
+    r"(?:python3?|python3?\s+-m) ?(?:unittest|pytest|py_compile)\b",
+    r"pytest\b",
+    r"flutter (?:test|analyze)\b",
+    r"dart (?:test|analyze)\b",
+    r"cargo (?:test|check|build)\b",
+    r"make (?:test|check|lint)\b",
+    r"(?:grep|rg)\b",
+    r"git (?:-C \S+ )?(?:grep|log|show|diff|status|ls-files|rev-parse)\b",
+    # bash 測試腳本由 bash_script_ok() 判定（分段比對，見下）
+    r"python3 (?:bin/brief-lint|~/\.claude/bin/brief-lint|/Users/mike/\.claude/bin/brief-lint)(?=\s|$)",
+    r"(?:wc|head|tail|cat|ls)\b",  # 唯讀小工具
+    r"test -[efdsx]\b",  # test 只允許帶檔案旗標
+))
+CD_SEGMENT_RE = re.compile(r"cd\s+\S+")
+ASSIGN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(?:'[^']*'|\"[^\"]*\"|\S*)\s+")
+ENV_PREFIX_RE = re.compile(r"^(?:%s)+" % ASSIGN_RE.pattern)
+BASH_SCRIPT_RE = re.compile(r"bash (\S+)(?=\s|$)")
+GIT_GREP_RE = re.compile(r"git (?:-C \S+ )?grep\b")
+REDIRECT_TARGET_RE = re.compile(r"[^\s;|&<>]*")
+
+
+def trunc(s, n=MAX_LINE):
+    s = s.rstrip("\r\n")
+    return s if len(s) <= n else s[:n]
+
+
+def strip_fences(lines):
+    """去掉 ``` 圍欄區塊（含圍欄行），回傳剩下的行。"""
+    out, in_fence = [], False
+    for ln in lines:
+        if ln.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            out.append(ln)
+    return out
+
+
+def section_lines(lines, heading_prefix):
+    """取 '## <heading_prefix>...' 那一節（到下一個 '## ' 為止），排除圍欄區塊。"""
+    out, inside = [], False
+    for ln in lines:
+        if ln.startswith("## "):
+            inside = ln.startswith("## " + heading_prefix)
+            continue
+        if inside:
+            out.append(ln)
+    return strip_fences(out)
+
+
+def inline_codes(lines):
+    res = []
+    for ln in lines:
+        res.extend(m.group(1).strip() for m in INLINE_RE.finditer(ln))
+    return res
+
+
+# ---------------- refs ----------------
+def looks_like_path(p):
+    last = p.rsplit("/", 1)[-1]
+    if "/" in p:
+        return bool(re.search(r"[A-Za-z]", last))
+    return bool(re.search(r"\.[A-Za-z][A-Za-z0-9]*$", last)) and bool(re.search(r"[A-Za-z]", last))
+
+
+def looks_like_host(path, before):
+    """host:port 一類不是檔案引用：IP、localhost、user@host、常見 TLD 結尾（皆限無 '/'）、
+    以及緊接在 `name(` 呼叫括號之後的無 '/' token。"""
+    if re.fullmatch(r"\d+(?:\.\d+){3}", path):
+        return True
+    if "/" in path:
+        return False
+    if path.lower().split(".")[0] == "localhost":
+        return True
+    if "@" in path:
+        return True
+    if path.lower().rsplit(".", 1)[-1] in HOST_TLDS:
+        return True
+    if re.search(r"[A-Za-z0-9_]\($", before):
+        return True
+    return False
+
+
+def check_refs(text, repo):
+    problems = 0
+    print("[refs]")
+    seen = set()
+    for m in REF_RE.finditer(text):
+        path, start, end = m.group(1), int(m.group(2)), m.group(3)
+        if not looks_like_path(path) or looks_like_host(path, text[max(0, m.start() - 2):m.start()]):
+            continue
+        ref = m.group(0)
+        if ref in seen:
+            continue
+        seen.add(ref)
+        if path.startswith("~"):
+            full = os.path.expanduser(path)
+        elif path.startswith("/"):
+            full = path
+        else:
+            full = os.path.join(repo, path)
+        if not os.path.isfile(full):
+            print("MISSING_FILE %s" % ref)
+            problems += 1
+            continue
+        with open(full, "r", encoding="utf-8", errors="replace") as f:
+            flines = f.read().split("\n")
+        if flines and flines[-1] == "":
+            flines.pop()
+        n = len(flines)
+        top = max(start, int(end)) if end else start
+        if start < 1 or top > n:
+            print("LINE_OUT_OF_RANGE %s (file has %d lines)" % (ref, n))
+            problems += 1
+            continue
+        print("OK %s | %s" % (ref, trunc(flines[start - 1])))
+    return problems
+
+
+# ---------------- cmds ----------------
+def first_token(cmd):
+    try:
+        toks = shlex.split(cmd)
+    except ValueError:
+        toks = cmd.split()
+    while toks and ENV_ASSIGN_RE.match(toks[0]):
+        toks = toks[1:]
+    return toks[0] if toks else ""
+
+
+def is_command(cmd, repo):
+    pairs, _ = scan_segments(cmd)
+    tok = first_token(pairs[0][0]) if pairs else ""
+    if not tok:
+        return False
+    if cmd.startswith(("bash ", "./", "python3 ")) or tok == "cd":
+        return True
+    if "/" in tok:
+        # 帶路徑的 token：相對路徑以 --repo 為根（指令實際就在 repo 下執行）
+        full = tok if os.path.isabs(tok) else os.path.join(repo, tok)
+        return os.path.isfile(full) and os.access(full, os.X_OK)
+    return shutil.which(tok) is not None
+
+
+def env_names(seg):
+    """段首 VAR=val 前綴的變數名清單。"""
+    names, pos = [], 0
+    while True:
+        m = ASSIGN_RE.match(seg, pos)
+        if not m:
+            return names
+        names.append(m.group(1))
+        pos = m.end()
+
+
+def is_denied(cmd):
+    pairs, _ = scan_segments(cmd)
+    for seg, _sep in pairs:
+        if any(DENY_ENV_RE.fullmatch(n) for n in env_names(seg)):
+            return True
+        tok = first_token(seg)
+        if tok and os.path.basename(tok) in DENY_FIRST_TOKENS:
+            return True
+        bare = ENV_PREFIX_RE.sub("", seg)
+        for cmd_re, flag_re in DENY_SEGMENT_RULES:
+            if cmd_re.match(bare) and flag_re.search(bare):
+                return True
+    return any(p.search(cmd) for p in DENY_PATTERNS)
+
+
+def scan_segments(cmd):
+    """引號感知地依 && || ; | 換行 切段。回傳 ([(segment, 後接的分隔符)], unsafe)，
+    分隔符為 "&&" "||" ";" "|" "\n" 或 ""（最後一段）。
+    unsafe＝出現指令替換（$( ` <( ）、背景執行（單獨的 &）、寫檔重導向（> 的目標不是
+    /dev/null 或 &N）或引號未閉合：這些會讓白名單的「逐段檢查」失效，整條視為不可執行。"""
+    segs, cur, unsafe = [], [], False
+    quote = None
+    i, n = 0, len(cmd)
+
+    def flush(sep):
+        s = "".join(cur).strip()
+        if s:
+            segs.append((s, sep))
+        del cur[:]
+
+    while i < n:
+        c = cmd[i]
+        if quote == "'":
+            cur.append(c)
+            quote = None if c == "'" else quote
+            i += 1
+            continue
+        if quote == '"':
+            if c == "\\" and i + 1 < n:
+                cur.append(cmd[i:i + 2])
+                i += 2
+                continue
+            if c == "`" or cmd.startswith("$(", i):
+                unsafe = True
+            cur.append(c)
+            quote = None if c == '"' else quote
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            cur.append(cmd[i:i + 2])
+            i += 2
+            continue
+        if c in "'\"":
+            quote = c
+            cur.append(c)
+            i += 1
+            continue
+        if c == "`" or cmd.startswith(("$(", "<(", "$'"), i):
+            unsafe = True
+            cur.append(c)
+            i += 1
+            continue
+        if cmd.startswith("&&", i) or cmd.startswith("||", i):
+            flush(cmd[i:i + 2])
+            i += 2
+            continue
+        if c in ";|\n":
+            flush(c)
+            i += 1
+            continue
+        if c == ">" or cmd.startswith("&>", i):
+            j = i + 1 if c == "&" else i
+            while j < n and cmd[j] == ">":
+                j += 1
+            dup = j < n and cmd[j] == "&"
+            if dup:
+                j += 1
+            k = j
+            while k < n and cmd[k] in " \t":
+                k += 1
+            target = REDIRECT_TARGET_RE.match(cmd, k).group(0)
+            fd_ok = dup and re.fullmatch(r"\d+|-", target) is not None
+            if not (target == "/dev/null" or fd_ok):
+                unsafe = True
+            cur.append(cmd[i:k + len(target)])
+            i = k + len(target)
+            continue
+        if c == "&":
+            unsafe = True
+        cur.append(c)
+        i += 1
+    if quote is not None:
+        unsafe = True
+    flush("")
+    return segs, unsafe
+
+
+def split_segments(cmd):
+    pairs, unsafe = scan_segments(cmd)
+    return [seg for seg, _sep in pairs], unsafe
+
+
+def split_pipelines(cmd):
+    """([[同一條管線（以 | 相連）的各段]], unsafe)。"""
+    pairs, unsafe = scan_segments(cmd)
+    pipes, cur = [], []
+    for seg, sep in pairs:
+        cur.append(seg)
+        if sep != "|":
+            pipes.append(cur)
+            cur = []
+    if cur:
+        pipes.append(cur)
+    return pipes, unsafe
+
+
+def bash_script_ok(seg):
+    """bash <腳本>：相對路徑、不含 .. 與 $、不以 / ~ - 開頭、以 .sh 結尾，且目錄分段等於
+    test／tests，或檔名以 test_ 開頭（分段比對，不用子字串）。"""
+    m = BASH_SCRIPT_RE.match(seg)
+    if not m:
+        return False
+    path = m.group(1)
+    if path.startswith(("/", "~", "-")) or ".." in path or "$" in path or not path.endswith(".sh"):
+        return False
+    parts = path.split("/")
+    return any(d in ("test", "tests") for d in parts[:-1]) or parts[-1].startswith("test_")
+
+
+def seg_allowed(idx, seg):
+    seg = ENV_PREFIX_RE.sub("", seg)
+    if idx == 0 and CD_SEGMENT_RE.fullmatch(seg):
+        return True
+    return any(r.match(seg) for r in ALLOW_RULES) or bash_script_ok(seg)
+
+
+def is_allowed(cmd):
+    segs, unsafe = split_segments(cmd)
+    if unsafe or not segs:
+        return False
+    return all(seg_allowed(i, s) for i, s in enumerate(segs))
+
+
+def grep_segment(cmd):
+    """最後一個非 cd 的指令（依 && || ; 切，引號感知）的管線第一段，剝掉 VAR=val 前綴。"""
+    pipes, _ = split_pipelines(cmd)
+    for pipe in reversed(pipes):
+        first = ENV_PREFIX_RE.sub("", pipe[0])
+        if CD_SEGMENT_RE.fullmatch(first):
+            continue
+        return first
+    return ""
+
+
+def is_grep_cmd(cmd):
+    seg = grep_segment(cmd)
+    return first_token(seg) in ("grep", "rg") or GIT_GREP_RE.match(seg) is not None
+
+
+def grep_zero_match(cmd, stdout):
+    """grep／rg／git grep 的零命中判定。
+    -q／-l／-L（含長旗標）：stdout 為空不代表零命中，不判；
+    -c／--count：stdout 每行末欄（':' 之後或整行）全為 0 才算零命中；
+    其餘：stdout 為空。"""
+    seg = grep_segment(cmd)
+    try:
+        toks = shlex.split(seg)
+    except ValueError:
+        toks = seg.split()
+    short, long_ = set(), set()
+    for t in toks:
+        if t.startswith("--"):
+            long_.add(t.split("=", 1)[0])
+        elif t.startswith("-") and len(t) > 1:
+            short.update(t[1:])
+    if (short & GREP_NO_STDOUT_SHORT) or any(f in long_ for f in GREP_NO_STDOUT_LONG):
+        return False
+    if "c" in short or "--count" in long_:
+        lines = [ln for ln in stdout.split("\n") if ln.strip()]
+        return all(ln.rsplit(":", 1)[-1].strip() == "0" for ln in lines)
+    return not stdout.strip()
+
+
+def run_cmd(cmd, repo, timeout):
+    """回傳 (exit_code 或 None=逾時, 合併輸出, stdout)。"""
+    p = subprocess.Popen(
+        ["bash", "-c", cmd], cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,  # 白名單內的 cat／wc 無參數時不得卡在讀 stdin
+        start_new_session=True,
+    )
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            p.kill()
+        out, err = p.communicate()
+        return None, (out + err).decode("utf-8", "replace"), out.decode("utf-8", "replace")
+    return p.returncode, (out + err).decode("utf-8", "replace"), out.decode("utf-8", "replace")
+
+
+def check_cmds(lines, repo, run, timeout):
+    problems = 0
+    print("[cmds]")
+    for cmd in inline_codes(section_lines(lines, "驗收標準")):
+        if not is_command(cmd, repo):
+            continue
+        if is_denied(cmd):
+            print("DENIED %s" % cmd)
+            continue
+        if PLACEHOLDER_RE.search(cmd):
+            print("PLACEHOLDER %s" % cmd)
+            continue
+        if not is_allowed(cmd):
+            print("UNLISTED %s" % cmd)
+            continue
+        if not run:
+            print("NOT_RUN %s" % cmd)
+            continue
+        code, combined, stdout = run_cmd(cmd, repo, timeout)
+        flags = []
+        if code is None:
+            flags.append("TIMEOUT")
+        else:
+            if code != 0:
+                flags.append("FAIL")
+            if any(mk in combined for mk in SKIP_MARKERS):
+                flags.append("SKIP")
+            if is_grep_cmd(cmd) and grep_zero_match(cmd, stdout):
+                flags.append("ZERO_MATCH")
+        if flags:
+            problems += 1
+        head = "RUN exit=%s" % ("timeout" if code is None else code)
+        print(" ".join([head] + flags + [cmd]))
+        for ln in combined.rstrip("\n").split("\n")[-5:]:
+            if ln != "" or combined.strip():
+                print("  " + trunc(ln))
+    return problems
+
+
+# ---------------- callers ----------------
+def is_test_path(path):
+    base = os.path.basename(path)
+    return any(m in base for m in ("_test.", ".spec.", ".test.")) or "/test/" in "/" + path or "/tests/" in "/" + path
+
+
+def check_callers(lines, repo):
+    print("[callers]")
+    names = []
+    for code in inline_codes(section_lines(lines, "範圍")):
+        for m in CALL_RE.finditer(code):
+            if m.group(1) not in names:
+                names.append(m.group(1))
+    for name in names:
+        last = name.rsplit(".", 1)[-1]
+        r = subprocess.run(
+            ["git", "-C", repo, "grep", "-n", "-F", last + "("],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        hits = []
+        if r.returncode in (0, 1):
+            hits = [h for h in r.stdout.decode("utf-8", "replace").split("\n") if h]
+        elif r.returncode != 0:
+            print("%s (git grep failed: %s)" % (name, trunc(r.stderr.decode("utf-8", "replace").strip())))
+            continue
+        tests = sum(1 for h in hits if is_test_path(h.split(":", 1)[0]))
+        print("%s total=%d tests=%d" % (name, len(hits), tests))
+        for h in hits[:CALLER_LIST_MAX]:
+            print("  " + trunc(h))
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="brief-lint", description="機械檢查 brief 的引用、驗收指令與呼叫點")
+    ap.add_argument("brief")
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--run", action="store_true")
+    ap.add_argument("--timeout", type=int, default=120)
+    args = ap.parse_args()  # 參數錯 → argparse 自己 exit 2
+
+    if not os.path.isfile(args.brief):
+        print("brief-lint: brief 不存在: %s" % args.brief, file=sys.stderr)
+        return 2
+    if not os.path.isdir(args.repo):
+        print("brief-lint: --repo 不是目錄: %s" % args.repo, file=sys.stderr)
+        return 2
+    repo = os.path.abspath(args.repo)
+
+    with open(args.brief, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    lines = text.split("\n")
+
+    problems = check_refs(text, repo)
+    problems += check_cmds(lines, repo, args.run, args.timeout)
+    check_callers(lines, repo)
+    print("summary: problems=%d" % problems)
+    sys.stdout.flush()
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

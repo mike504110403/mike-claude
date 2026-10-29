@@ -9,6 +9,7 @@
 - /quick：小而可界定，主代理做；/solo：路線清楚的中型單線，主代理做。
 - /feature：可獨立切片、跨 repo 或需專門審查；有獨立工作才派 native subagents。
 - /bug：未知根因先定位；/mega：未知選型/多波先解關鍵決策再逐波 /feature。
+- /mvp：新專案未上線、無真實用戶、無真實資料時一律走它；本檔其餘全域規則以 /mvp 覆寫清單為準，畢業後回上列 lane。
 
 金流、認證授權、secrets、DB migration、全域配置或不可逆操作至少 /feature；升級即宣告，降級先取得同意。只載入當下需要的技能，缺技能/工具明示 fallback與限制，不假稱成功。代號/跨裝置路由按 /feature-flow 本機範本，不依賴不存在的全域 PROJECTS。
 
@@ -42,4 +43,4 @@
 4. **驗證證據**：列出實際 tests、build/validate、review 結果與必要限制；未跑或未通過要明示。
 5. **還可以做什麼**：給下一步建議，待授權事項明列，不自動擴大 scope。
 
-五點後另附四項實際狀態，每項標「已／未／不適用」：commit（已提交才附 hash）、本地合併（目標 branch）、push（remote/branch；執行 push 後以 ls-remote 比對 hash 一致才能寫已推）、套用設定（適用時列部署目標與證據）。commit、本地合併、push 與套用設定各自獨立，不能用「完成」暗示其他階段已做或其他裝置已同步；詢問「推了嗎」不等於 push 授權。/quick、/solo 保留短段式回報例外。
+五點後另附四項實際狀態，每項標「已／未／不適用」：commit（已提交才附 hash）、本地合併（目標 branch）、push（remote/branch；執行 push 後以 ls-remote 比對 hash 一致才能寫已推）、套用設定（適用時列部署目標與證據）。commit、本地合併、push 與套用設定各自獨立，不能用「完成」暗示其他階段已做或其他裝置已同步；詢問「推了嗎」不等於 push 授權。/quick、/solo、/mvp 保留短段式回報例外。

@@ -15,12 +15,13 @@
 | 工程任務 | 判定 lane ＋ 改動面 → **第一句宣告「走 /X，因為…；改動面：後端／前端／前後端」→ 用 Skill 載入該 lane 才動工** |
 
 - **Lane**：/quick、/solo、/feature、/bug、/mega，判準以各 skill description 與本文為準。
+- **新專案先判 /mvp**：專案未上線、無真實用戶、無真實資料（三條全成立；專案 `CLAUDE.md` 的 `stage: mvp` 只是記錄，每次開工重確認）→ 一律走 /mvp，**本檔下列不變式以 /mvp 覆寫表為準**；畢業（首次給真實用戶或接真金流）後回上列五 lane。
 - **專案代號**：代號 → 絕對路徑住 `~/.claude/PROJECTS.md`；訊息提到專案先讀它解析路徑再分流，brief 的專案路徑欄一律填表內絕對路徑。
 - **跳線**：升級（quick→feature→mega，或任一→bug）宣告「升級 /X，因為…」即跳；**降級先問 Mike**。回報第一句沒有 lane 宣告＝流程違規。
 
 ---
 
-## 跨 lane 不變式（不依賴 skill 載入，永遠生效）
+## 跨 lane 不變式（不依賴 skill 載入，永遠生效；/mvp 專案依其覆寫表）
 
 ### /quick、/solo 硬排除
 

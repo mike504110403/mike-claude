@@ -5,6 +5,8 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 
 # /review-chain — 審查鏈
 
+> /mvp 專案不適用本積木：驗收與畢業總審以 /mvp 為準。
+
 ## 觸發表
 
 本表是 reviewer 觸發的**唯一 source**；模型選配唯一依據全域「模型選配」，不在此重抄。

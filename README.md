@@ -54,7 +54,7 @@ INSTALL_NAME=小華 curl -fsSL https://raw.githubusercontent.com/mike504110403/m
 
 ## 內容物
 
-- **Lane 化工作流 skills**（`skills/`）：quick / solo / feature / bug / mega 五條派工 lane，加上 brief、verify、review-chain 等流程積木
+- **Lane 化工作流 skills**（`skills/`）：quick / solo / feature / bug / mega 五條派工 lane＋新專案專用的 mvp lane，加上 brief、verify、review-chain 等流程積木
 - **Review agents**（`agents/`）：code-reviewer、security-reviewer、db-reviewer、ui-reviewer 等
 - **防護 hooks**（`hooks/`）：危險指令攔截、敏感檔案攔截、回報格式檢查、存檔自動 format
 - **tmux 狀態列 + phase 顯示**（`tmux.conf`、`bin/phase`）：目前工程進度即時顯示在 tmux 狀態列

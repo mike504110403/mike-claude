@@ -5,6 +5,8 @@ description: 驗收後對固定 diff/spec 做 Standards、Spec 與風險專門�
 
 # review-chain
 
+/mvp 專案不適用本技能：畢業總審以 /mvp 為準。
+
 code-reviewer 每次必跑；金流/付款/認證授權/secrets 加 security-reviewer；DB schema/migration 加 db-reviewer。獨立 reviewer 可同波 native 派工，額度依 runtime；核對有效 read-only sandbox，父回合 override 可能蓋掉角色預設。工具不可用時明示主代理獨立第二遍審查與限制，不假稱 native reviewer 已跑。
 
 每份 prompt 附：固定 base/head（未提交時明確 diff 狀態）、diff --stat、對照 spec（feature 用 brief、solo 用任務描述）、已跑證據、改動檔與直接呼叫端邊界。以 **Standards**（repo 規範）及 **Spec**（需求）兩軸回報；沒有 spec 不可悄悄跳過。沒 findings 也列審查範圍。

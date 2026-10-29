@@ -6,7 +6,7 @@
 
 | 原工作紀律 | Codex 的執行方式 |
 |---|---|
-| 五條 lane 與範圍鎖定 | 短 skills 按需載入；主代理直接完成小/單線工作 |
+| 五條 lane＋新專案 /mvp 與範圍鎖定 | 短 skills 按需載入；主代理直接完成小/單線工作 |
 | 派工與審查 | Native subagents，TOML 角色沿用父模型；只有獨立切片才派工，額度依 runtime |
 | Worktree | App managed worktree 優先，指定已核實基底；CLI 用 Git fallback，保留來源 dirty 狀態 |
 | 驗收與 review | 固定基底的 diff+spec，主代理親跑適用 checks，再原生 reviewer/行內回饋 |
@@ -16,7 +16,7 @@
 
 ## 完成回報與設定狀態
 
-/feature 的五點收尾格式以來源 [assets/AGENTS.md「工程收尾」](assets/AGENTS.md#工程收尾) 為唯一規則；feature skill 引用全域 AGENTS 的該節，拆開部署後仍可使用。/quick、/solo 保留短段式例外。回報依實際 Git 狀態與執行證據，分別說明 commit、本地合併、push、套用設定；只有 push 後 remote hash 核對一致才能寫已推。
+/feature 的五點收尾格式以來源 [assets/AGENTS.md「工程收尾」](assets/AGENTS.md#工程收尾) 為唯一規則；feature skill 引用全域 AGENTS 的該節，拆開部署後仍可使用。/quick、/solo、/mvp 保留短段式例外。回報依實際 Git 狀態與執行證據，分別說明 commit、本地合併、push、套用設定；只有 push 後 remote hash 核對一致才能寫已推。
 
 來源 repo `~/.claude/codex/` 的提交或本地合併不代表遠端已更新，也不代表已套用到 Codex home/skills 目標。套用設定須實際執行安裝並核對部署結果，hooks 還需 review/trust；回報不得假設其他裝置已同步。詢問 push 狀態不改變既有授權要求。
 

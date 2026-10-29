@@ -5,6 +5,8 @@ description: 主代理對照實際 diff/spec 親驗，按改動面與已授權 c
 
 # verify
 
+/mvp 專案不適用本技能：驗收與畢業總審以 /mvp 為準。
+
 1. 先對照看板/brief 的需求、worktree、base/HEAD；親看 diff --stat 與關鍵內容，若尚未 commit 就明示工作樹驗收，已 commit 才用 commit diff，不能拿兩者混稱。
 2. 範圍對帳含 producer/consumer 與所有修正項；接手既有保證作待驗清單，工人聲稱不是完成證據。Commands/已知基線按 /feature-flow 的路由資源核實，基線紅只決定歸屬，不等於豁免。
 3. 親跑適用且已授權 checks，逐一讀實際輸出而非只看 exit；沒有工具/依賴/授權就記未驗，不能聲稱成功。後端：適用 tests+build；前端：typecheck、地端 API、Mike 手測；Vue 引 /vue-dev，環境引 /local-stack，瀏覽器選擇引 /browser-tools。全域工作流或腳本依其 validate/fixtures；不為可逆文案新增鏡像 tests。

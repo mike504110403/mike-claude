@@ -5,6 +5,8 @@ description: done≠done 驗收積木：工人回報後大腦親驗的固定步�
 
 # /verify — done ≠ done 驗收
 
+> /mvp 專案不適用本積木：驗收與畢業總審以 /mvp 為準。
+
 工人的回報只是宣稱，驗收看的是**檔案實況與 commit 內容**。
 
 ## 派工 lane（/feature、/bug 大修）四步

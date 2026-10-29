@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "source_base": "5008475f519fc8526ec46736b53952a62a938c55",
-  "source_skill_count": 40,
+  "source_skill_count": 41,
   "skills": [
     {
       "name": "auto-e2e",
@@ -82,6 +82,10 @@
     {
       "name": "mega",
       "mode": "ported"
+    },
+    {
+      "name": "mvp",
+      "mode": "native-adapted"
     },
     {
       "name": "office-hours",

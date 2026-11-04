@@ -1,0 +1,33 @@
+#!/bin/bash
+# ccstatusline 的 custom-command（配 preserveColors: true）：只畫細線用量條，數字交給內建 widget
+# 用法：ccbar ctx|week ；stdin 吃 Claude Code statusline JSON
+# 內建 slider 字元寫死 ▓░ 且無法依用量變色，所以自畫；60/85 變色門檻
+JQ=$(command -v jq || echo /opt/homebrew/bin/jq)
+input=$(cat)
+
+case "$1" in
+  ctx)  pct=$("$JQ" -r '.context_window.used_percentage // 0' <<<"$input") ;;
+  week) pct=$("$JQ" -r '.rate_limits.seven_day.used_percentage // empty' <<<"$input")
+        # session 剛啟動時還沒有 rate_limits，改用 ccstatusline 自己的用量快取
+        [ -n "$pct" ] || pct=$("$JQ" -r '.weeklyUsage // empty' "$HOME/.cache/ccstatusline/usage.json" 2>/dev/null) ;;
+  *)    exit 0 ;;
+esac
+[ -n "$pct" ] || exit 0
+pct=${pct%.*}
+
+if [ "$pct" -ge 85 ]; then col='255;117;127'
+elif [ "$pct" -ge 60 ]; then col='255;199;119'
+else col='195;232;141'; fi
+
+width=10
+halves=$(( (pct * width * 2 + 50) / 100 ))
+[ "$halves" -gt $((width * 2)) ] && halves=$((width * 2))
+[ "$pct" -gt 0 ] && [ "$halves" -eq 0 ] && halves=1
+full=$((halves / 2)); half=$((halves % 2))
+
+fill=''; track=''
+i=0; while [ "$i" -lt "$full" ]; do fill+='━'; i=$((i + 1)); done
+[ "$half" -eq 1 ] && fill+='╸'
+i=$((full + half)); while [ "$i" -lt "$width" ]; do track+='─'; i=$((i + 1)); done
+
+printf '\033[38;2;%sm%s\033[38;2;99;109;166m%s\033[39m' "$col" "$fill" "$track"

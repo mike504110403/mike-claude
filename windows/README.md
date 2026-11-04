@@ -77,6 +77,6 @@ schtasks /run /tn WezTerm-Admin   # 同一個管理員 PowerShell 裡跑，立�
 | `bin/tests/` | i2 的 exit 斷言在 Windows SKIP；dogfood 清單移除 3 條 POSIX 訊號變異、M-shell-not-bash 改守 WSL stub | MSYS 送不了 SIGINT 給原生行程。已知缺口：`_kill_group` 的 taskkill 分支無測試守 |
 | `wezterm.lua` | 新增 | Mac 用 cmux／Ghostty（見 `terminal/mac/`），PC 用 WezTerm 對齊同樣的配色、字型與 workspace 手感 |
 
-沒帶的 Mac 工具：`cmux-claude-launcher`、`cmux-pet-notify.sh`、`phase`、`trust-dir`、`usage-diag`、`hooks/cmux_pane_cleanup.sh`、claude-pet、graft hooks、`tmux.conf`。
+沒帶的 Mac 工具：`cmux-claude-launcher`、`cmux-pet-notify.sh`、`phase`、`ccbar`、`trust-dir`、`usage-diag`、`hooks/cmux_pane_cleanup.sh`、claude-pet、graft hooks、`tmux.conf`。
 
 `.gitattributes` 讓本目錄一律 LF——Git for Windows 預設 `core.autocrlf=true`，CRLF 會讓 shebang 失效。

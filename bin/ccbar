@@ -1,6 +1,6 @@
 #!/bin/bash
 # ccstatusline 的 custom-command：%＋八分格條同格顯示（配 preserveColors: true）
-# 用法：ccbar ctx|5h|week ；stdin 吃 Claude Code statusline JSON
+# 用法：ccbar ctx|week|week-reset ；stdin 吃 Claude Code statusline JSON
 # 色票與 60/85 變色門檻同 ~/.claude/statusline.sh
 JQ=$(command -v jq || echo /opt/homebrew/bin/jq)
 input=$(cat)
@@ -16,7 +16,7 @@ remain() { # epoch → "2h15m" / "5d2h"（同 statusline.sh）
 # session 剛啟動時 Claude Code 只給 used_percentage、resets_at 晚幾秒才到：
 # 拿到就存快取，沒拿到就用快取裡尚未過期的值，避免啟動空窗倒數空白
 CACHE_DIR="$HOME/.cache/ccbar"
-reset_epoch() { # five_hour|seven_day → epoch（空字串＝真的沒有）
+reset_epoch() { # seven_day → epoch（空字串＝真的沒有）
   local r f
   r=$("$JQ" -r ".rate_limits.$1.resets_at // empty" <<<"$input")
   f="$CACHE_DIR/$1.resets_at"
@@ -35,8 +35,6 @@ case "$1" in
     [ -n "$r" ] && printf '(%s)' "$(remain "$r")"
     exit 0 ;;
   ctx)  pct=$("$JQ" -r '.context_window.used_percentage // 0' <<<"$input"); label='Ctx' ;;
-  5h)   pct=$("$JQ" -r '.rate_limits.five_hour.used_percentage // empty' <<<"$input"); label='5h'
-        reset_at=$(reset_epoch five_hour) ;;
   week) pct=$("$JQ" -r '.rate_limits.seven_day.used_percentage // empty' <<<"$input"); label='週'
         reset_at=$(reset_epoch seven_day) ;;
   *)    exit 0 ;;

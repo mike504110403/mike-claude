@@ -30,10 +30,6 @@ reset_epoch() { # five_hour|seven_day → epoch（空字串＝真的沒有）
 
 reset_at=''
 case "$1" in
-  5h-reset)  # 純倒數文字（給 widget 自己上色），5h 視窗剩餘時間
-    r=$(reset_epoch five_hour)
-    [ -n "$r" ] && printf '(%s)' "$(remain "$r")"
-    exit 0 ;;
   week-reset)  # 純倒數文字，7 天視窗剩餘時間
     r=$(reset_epoch seven_day)
     [ -n "$r" ] && printf '(%s)' "$(remain "$r")"

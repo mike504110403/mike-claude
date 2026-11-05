@@ -62,7 +62,7 @@
 
 ### 模型選配
 
-- **大腦**：維持 `claude-fable-5-1`，不自行降級（2026-09-10 裁示，依據見 memory `context-budget-diagnosis`）。可執行義務綁 /ship 盤點：本工程大腦 Read 圖片＝0 且無 >50KB 整檔 Read → 提醒 Mike 重跑用量診斷再定。
+- **大腦**：維持 `opus`，不自行切換（2026-11-05 Mike 裁示，取代 09-10 的 `claude-fable-5-1`；用量數據見 memory `context-budget-diagnosis`）。可執行義務綁 /ship 盤點：本工程大腦 Read 圖片＝0 且無 >50KB 整檔 Read → 提醒 Mike 重跑用量診斷複查 `opus` 成本。
 - **有 agent 檔的角色**：以 `~/.claude/agents/*.md` frontmatter 為準；金流／架構／複雜演算法派 implementer 帶 `model: opus`。
 - **臨時 prompt 診斷／選型研究**：`opus`。
 - 派工形式、上限、探路要不要派：唯一依據 /feature「派工紀律」。

@@ -95,7 +95,10 @@
 
 - 存檔自動 format（`.go` gofmt、前端 prettier）。
 - Hook 擋**直接形式**：`rm -rf`、force push、`git add .`、`git branch -D`、`git clean -f` 硬擋；push、`reset --hard`、遞迴刪除強制詢問。**包一層（npm script、make、sh）hook 看不進**——間接執行前先讀 script。刪除用精確路徑、加檔逐一指定。
-- nginx 設定或 DB migration **強制詢問 Mike**。
+- push 閘門：單純形式（`[cd <path> &&] git [-C <path>] push [<remote>] [<ref>...]`，選項只接受 `-u`）缺敏感檔證據硬擋，證據齊才詢問；hook 抓得到的其他形式詢問並標「無法判定」，不驗證據（已知漏抓見 /ship）。`gate-evidence waive` 直接形式一律詢問。
+- nginx 與 DB migration：repo 內檔案的 Edit／Write 不問（系統 nginx 路徑與含 `sites-enabled`／`sites-available` 的路徑才問）；實際執行（含 `supabase db push`）**一律詢問 Mike**；push 時驗證據。
+- 免問只限單純唯讀指令：`grep`、`cat`、`git log`、`git add <檔>`、帶訊息的 `git commit`、完全等於 `nginx -t`、`gate-evidence record`／`check` 等，可接 `|`，開頭可帶一段 `cd <path> &&`；含 glob、brace、反斜線、重導向就照問。
+- 執行期例外與壞 payload 走 ask，不放行（hook 語法錯誤、被 timeout 殺掉接不住，改 hook 後必跑測試）。
 
 ---
 

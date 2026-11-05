@@ -1,0 +1,366 @@
+#!/usr/bin/env python3
+"""push 閘門的證據工具：證據綁「路徑＋檔案內容 hash」，不綁 commit hash（/feature 合併回 dev 會壓成一顆）。
+
+  record  為當前範圍全部敏感檔寫入一種證據
+  check   exit 0＝無敏感檔或證據齊全；1＝缺證據；2＝無法判定
+  waive   Mike 裁示略過：補齊全部種類並標記 waived（hook 一律 ask）
+
+record、waive 範圍內沒有敏感檔 exit 3。未預期例外一律 exit 2，不得落到 exit 1——hook 只把 exit 1 當缺證據。
+"""
+import argparse
+import datetime
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+KINDS = ("db-review", "local-stack", "code-review", "nginx-test")
+MIGRATION_DIRS = {"migrations", "migration", "migrate"}
+MVP_LINE = re.compile(r"^\s*stage:\s*mvp\s*$")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+LS_TREE_CHUNK = 200
+TRUE_VALUES = {"true", "yes", "on", "1"}
+CLI_HINT = "~/.claude/bin/gate-evidence"
+
+
+class Undetermined(Exception):
+    pass
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        print(f"gate-evidence：參數錯誤：{message}")
+        sys.exit(2)
+
+
+def clean(text):
+    """給人看的輸出：跳脫控制字元。檔名可以含換行，不能讓它在 hook 的 reason 裡偽造一行補法。"""
+    return "".join(c if c.isprintable() else c.encode("unicode_escape").decode("ascii") for c in str(text))
+
+
+def run_git(cwd, *args, stdin=None):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    return subprocess.run(["git", "--no-replace-objects", "--literal-pathspecs", "-c", "log.showRoot=true",
+                           "-C", cwd, *args], capture_output=True, env=env, input=stdin)
+
+
+def git_out(cwd, *args):
+    p = run_git(cwd, *args)
+    if p.returncode != 0:
+        detail = p.stderr.decode("utf-8", "replace").strip()
+        raise Undetermined(f"git {args[0]} 失敗：{detail}")
+    return p.stdout
+
+
+def git_line(cwd, *args):
+    return os.fsdecode(git_out(cwd, *args)).rstrip("\n")
+
+
+def git_config(cwd, key):
+    p = run_git(cwd, "config", "--get", key)
+    return os.fsdecode(p.stdout).strip() if p.returncode == 0 else ""
+
+
+# ----- repo 與專案宣告 ---------------------------------------------------------
+
+def open_repo(path):
+    if not os.path.isdir(path):
+        raise Undetermined(f"不是目錄：{path}")
+    top = git_line(path, "rev-parse", "--show-toplevel")
+    common = git_line(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    main_checkout = os.path.dirname(common.rstrip("/"))
+    return {"top": top, "main": main_checkout, "key": os.path.basename(main_checkout) or "_root"}
+
+
+def needs_local_stack(repo):
+    """主 checkout 往上逐層找 .claude/localstack.json，到 $HOME 為止；check 與 record、waive 共用。"""
+    home = os.path.realpath(os.path.expanduser("~"))
+    here = os.path.realpath(repo["main"])
+    while True:
+        if os.path.isfile(os.path.join(here, ".claude", "localstack.json")):
+            return True
+        parent = os.path.dirname(here)
+        if here == home or parent == here:
+            return False
+        here = parent
+
+
+def prose_lines(text):
+    """Markdown 內文的行：略過 code fence、縮排 code block、HTML 註解。"""
+    fence, comment = None, False
+    for line in text.split("\n"):
+        if comment:
+            comment = "-->" not in line
+            continue
+        m = FENCE.match(line)
+        if fence:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip():
+                fence = None
+        elif m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+            fence = m.group(1)
+        elif "<!--" in line:
+            comment = "-->" not in line.split("<!--", 1)[1]
+        elif not line.startswith(("    ", "\t")):
+            yield line
+
+
+def is_mvp(repo, commit):
+    """只信要推的 commit 裡的 CLAUDE.md：工作樹裡沒 commit 的宣告不算，範例區塊內的也不算。"""
+    name = f"{commit}:CLAUDE.md"
+    kind = run_git(repo["top"], "cat-file", "-t", name)
+    if kind.returncode != 0 or kind.stdout.strip() != b"blob":
+        return False  # 目錄的話 git show 會列檔名，檔名可以就叫 stage: mvp
+    text = git_out(repo["top"], "show", name).decode("utf-8", "replace")
+    return any(MVP_LINE.match(line.replace("`", "")) for line in prose_lines(text))
+
+
+# ----- 敏感檔與範圍 ------------------------------------------------------------
+
+def sensitive_classes(path):
+    """敏感檔判定的唯一入口：回傳 {"migration", "nginx"} 的子集。"""
+    low = path.lower()
+    if low.endswith((".md", ".txt")):
+        return set()
+    *dirs, name = low.split("/")
+    classes = set()
+    if MIGRATION_DIRS & set(dirs) or re.search(r"[._-]migration", name) or "/alembic/versions/" in "/" + low:
+        classes.add("migration")
+    if any(k in low for k in ("nginx", "sites-available", "sites-enabled")):
+        classes.add("nginx")
+    return classes
+
+
+def required_kinds(classes, local_stack):
+    kinds = []
+    if "migration" in classes:
+        kinds += ["db-review"] + (["local-stack"] if local_stack else [])
+    if "nginx" in classes:
+        kinds += ["code-review", "nginx-test"]
+    return kinds
+
+
+def resolve_remote(repo, given):
+    if given is not None:
+        return given
+    branch = run_git(repo["top"], "symbolic-ref", "-q", "--short", "HEAD")
+    name = os.fsdecode(branch.stdout).strip() if branch.returncode == 0 else ""
+    keys = ([f"branch.{name}.pushRemote"] if name else []) + ["remote.pushDefault"] + \
+        ([f"branch.{name}.remote"] if name else [])
+    for key in keys:
+        value = git_config(repo["top"], key)
+        if value:
+            return value
+    return "origin"
+
+
+def blobs_of(repo, commit, paths):
+    """回傳 {path: blob}；ref 上已不存在的檔記為 deleted:<path>。"""
+    found = {}
+    for i in range(0, len(paths), LS_TREE_CHUNK):
+        out = git_out(repo["top"], "ls-tree", "-z", "--full-tree", commit, "--", *paths[i:i + LS_TREE_CHUNK])
+        for entry in out.split(b"\0"):
+            meta, _, name = entry.partition(b"\t")
+            if name and meta.split()[1] != b"tree":
+                found[os.fsdecode(name)] = meta.split()[2].decode("ascii")
+    return {path: found.get(path, f"deleted:{path}") for path in paths}
+
+
+def committed_paths(repo, commit, remote):
+    """範圍內非 merge commit 改到的路徑。這些是本地寫下的內容（含 squash、cherry-pick），一律要證據。"""
+    out = git_out(repo["top"], "log", "-z", "--name-only", "--format=", "--no-renames", "--no-merges",
+                  commit, "--not", f"--remotes={remote}")
+    return {os.fsdecode(raw) for raw in out.split(b"\0") if raw}
+
+
+def on_remote(repo, remote, files):
+    """內容已在該 remote 任一追蹤分支同路徑的檔，回傳其 path 集合。
+    一次 cat-file --batch-check 比完；batch 是逐行協定，含換行的路徑不比對（照常要求證據）。"""
+    refs = git_out(repo["top"], "for-each-ref", "--format=%(refname)", f"refs/remotes/{remote}/").split()
+    pairs = [(item, ref) for item in files for ref in refs
+             if not item["blob"].startswith("deleted:") and "\n" not in item["path"]]
+    if not pairs:
+        return set()
+    query = b"".join(ref + b":" + os.fsencode(item["path"]) + b"\n" for item, ref in pairs)
+    p = run_git(repo["top"], "cat-file", "--batch-check", stdin=query)
+    if p.returncode != 0:
+        raise Undetermined("git cat-file 失敗：" + p.stderr.decode("utf-8", "replace").strip())
+    lines = p.stdout.split(b"\n")
+    return {item["path"] for (item, _), line in zip(pairs, lines)
+            if line.split(b" ", 1)[0] == item["blob"].encode("ascii")}
+
+
+def resolve_target(repo, ref, remote):
+    """回傳 (commit, remote)。ref 與 remote 先驗過，後面的 git 指令只吃驗過的值。"""
+    remote = resolve_remote(repo, remote)
+    if run_git(repo["top"], "remote", "get-url", "--end-of-options", remote).returncode != 0:
+        raise Undetermined(f"remote 不存在或不是已設定的名稱：{remote}")
+    p = run_git(repo["top"], "rev-parse", "--verify", "--end-of-options", ref + "^{commit}")
+    if p.returncode != 0:
+        raise Undetermined(f"ref 不存在：{ref}")
+    return p.stdout.decode("ascii").strip(), remote
+
+
+def scope(repo, commit, remote):
+    """範圍內要求證據的敏感檔 list。"""
+    out = git_out(repo["top"], "log", "-z", "--name-only", "--format=", "--no-renames",
+                  "--diff-merges=first-parent", commit, "--not", f"--remotes={remote}")
+    classes = {}
+    for path in dict.fromkeys(os.fsdecode(raw) for raw in out.split(b"\0") if raw):
+        found = sensitive_classes(path)
+        if found:
+            classes[path] = found
+    blobs = blobs_of(repo, commit, list(classes))
+    files = [{"path": path, "blob": blobs[path], "classes": found} for path, found in classes.items()]
+    direct = committed_paths(repo, commit, remote)
+    already = on_remote(repo, remote, [item for item in files if item["path"] not in direct])
+    return [item for item in files if item["path"] not in already]
+
+
+# ----- 證據帳 ------------------------------------------------------------------
+
+def ledger_path(repo):
+    root = os.environ.get("GATE_EVIDENCE_DIR") or os.path.expanduser("~/.claude/evidence")
+    return os.path.join(root, repo["key"], "evidence.jsonl")
+
+
+def read_evidence(repo):
+    """回傳 {(path, blob): {kind…}}。讀不懂的行當作沒有證據。"""
+    found = {}
+    try:
+        with open(ledger_path(repo), encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                    found.setdefault((row["path"], row["blob"]), set()).add(row["kind"])
+                except (ValueError, KeyError, TypeError):
+                    continue
+    except FileNotFoundError:
+        pass
+    return found
+
+
+def write_rows(repo, rows):
+    path = ledger_path(repo)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("".join(json.dumps(row) + "\n" for row in rows))
+
+
+def missing_kinds(repo, files):
+    """回傳 [(file, 缺的種類 list)]，只列有缺的檔。"""
+    evidence = read_evidence(repo)
+    local_stack = needs_local_stack(repo)
+    result = []
+    for item in files:
+        have = evidence.get((item["path"], item["blob"]), set())
+        lacking = [k for k in required_kinds(item["classes"], local_stack) if k not in have]
+        if lacking:
+            result.append((item, lacking))
+    return result
+
+
+def base_row(item, kind, ref):
+    return {"path": item["path"], "blob": item["blob"], "kind": kind, "ref": ref,
+            "time": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+
+
+def nothing_to_do(ref, remote):
+    print(clean(f"範圍內沒有敏感檔（{ref} 相對 {remote}）。常見原因：改動還沒 commit。"))
+    return 3
+
+
+# ----- 子命令 ------------------------------------------------------------------
+
+def cmd_check(args):
+    repo = open_repo(args.repo)
+    ref = args.ref or "HEAD"
+    commit, remote = resolve_target(repo, ref, args.remote)
+    if is_mvp(repo, commit):
+        print("push 閘門已略過：stage: mvp")
+        return 0
+    if args.ref is None and (git_config(repo["top"], f"remote.{remote}.push")
+                             or git_config(repo["top"], f"remote.{remote}.mirror").lower() in TRUE_VALUES
+                             or git_config(repo["top"], "push.default") == "matching"):
+        raise Undetermined(f"沒給 refspec 且 remote.{remote}.push、mirror 或 push.default=matching 會改變實際推送範圍")
+    lacking = missing_kinds(repo, scope(repo, commit, remote))
+    if not lacking:
+        return 0
+    print("以下敏感檔缺證據（證據綁檔案內容，內容一改就要重補）：")
+    for item, kinds in lacking:
+        print(f"- {clean(item['path'])}（{clean(item['blob'])}）缺 {'、'.join(kinds)}")
+    print("補法：跑完對應驗證後逐項記錄（waive 只有 Mike 裁示才用）：")
+    for kind in dict.fromkeys(k for _, kinds in lacking for k in kinds):
+        print(clean(f"  {CLI_HINT} record --repo {shlex.quote(args.repo)} --kind {kind} "
+                    f"--ref {shlex.quote(ref)} --remote {shlex.quote(remote)} --note '<驗證摘要>'"))
+    return 1
+
+
+def cmd_record(args):
+    repo = open_repo(args.repo)
+    commit, remote = resolve_target(repo, args.ref, args.remote)
+    files = scope(repo, commit, remote)
+    if not files:
+        return nothing_to_do(args.ref, remote)
+    write_rows(repo, [dict(base_row(item, args.kind, args.ref), note=args.note or "", waived=False)
+                      for item in files])
+    print(f"已記錄 {args.kind}：{len(files)} 個檔")
+    for item, kinds in missing_kinds(repo, files):
+        print(f"- {clean(item['path'])} 還缺 {'、'.join(kinds)}")
+    return 0
+
+
+def cmd_waive(args):
+    if not args.reason.strip():
+        print("waive 必須給 --reason")
+        return 2
+    repo = open_repo(args.repo)
+    commit, remote = resolve_target(repo, args.ref, args.remote)
+    files = scope(repo, commit, remote)
+    if not files:
+        return nothing_to_do(args.ref, remote)
+    local_stack = needs_local_stack(repo)
+    write_rows(repo, [dict(base_row(item, kind, args.ref), note="", waived=True, reason=args.reason)
+                      for item in files for kind in required_kinds(item["classes"], local_stack)])
+    print(clean(f"已略過閘門：{len(files)} 個檔，理由：{args.reason}"))
+    return 0
+
+
+def build_parser():
+    parser = Parser(prog="gate-evidence", allow_abbrev=False)
+    subs = parser.add_subparsers(dest="command", required=True)
+
+    def add(name, handler, ref_default="HEAD"):
+        sub = subs.add_parser(name, allow_abbrev=False)
+        sub.add_argument("--repo", required=True)
+        sub.add_argument("--ref", default=ref_default)
+        sub.add_argument("--remote")
+        sub.set_defaults(handler=handler)
+        return sub
+
+    add("check", cmd_check, ref_default=None)  # 省略 --ref＝push 沒給 refspec
+    record = add("record", cmd_record)
+    record.add_argument("--kind", required=True, choices=KINDS)
+    record.add_argument("--note")
+    add("waive", cmd_waive).add_argument("--reason", required=True)
+    return parser
+
+
+def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+        args = build_parser().parse_args()
+        return args.handler(args)
+    except Undetermined as e:
+        print(clean(f"gate-evidence 無法判定：{e}"))
+        return 2
+    except SystemExit:
+        raise
+    except BaseException as e:
+        print(clean(f"gate-evidence 未預期錯誤：{type(e).__name__}: {e}"))
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

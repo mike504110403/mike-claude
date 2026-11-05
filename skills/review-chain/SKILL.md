@@ -16,8 +16,16 @@ description: Review chain 積木：reviewer 觸發表、review 對照物、打�
 | code-reviewer     | 每次都跑                         |
 | security-reviewer | 金流 / 付款 / 認證授權 / secrets |
 | db-reviewer       | DB schema / migration            |
+| code-reviewer 加 nginx 檢查項 | 改到 nginx 設定（prompt 加：server_name／upstream／TLS／proxy header／重導迴圈） |
 
 （ui-reviewer 已移出觸發表（2026-08-20 起），僅 Mike 點名時 on-demand 派；UI 行為驗證由下方「Mike 手測並行站」取代。）
+
+## 通過後記證據（push 閘門）
+
+reviewer 通過且改動已 commit 後，大腦親跑（證據綁檔案內容，修復輪改到敏感檔要重記；沒 commit 時 exit 3）：
+
+- db-reviewer 通過 → `~/.claude/bin/gate-evidence record --repo <worktree> --kind db-review --note '<結論>'`
+- 改到 nginx 設定、code-reviewer 含 nginx 檢查項通過 → 同上，`--kind code-review`
 
 ## Mike 手測並行站（改動面含前端）
 

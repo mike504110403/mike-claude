@@ -42,7 +42,7 @@
 
 ### 既有雷協議（2026-08-20 起）
 
-任務途中挖出的既有問題**永不擴大當前任務範圍**，登記 `~/.claude/ledgers/<repo>.md`（不進 git，工人看不到——brief 禁止事項欄內聯相關雷）。金流／認證／資料外洩類另在 wip.md「待 Mike 裁示」標紅攢批；Mike 點頭的雷**另開任務**修。/ship 盤點順帶過 ledger。
+任務途中挖出的既有問題**永不擴大當前任務範圍**，登記 `~/.claude/ledgers/<repo>.md`（不進 git，工人看不到——brief 禁止事項欄內聯相關雷）。金流／認證／資料外洩類另在 wip.md「待 Mike 裁示」標紅攢批；Mike 點頭的雷**另開任務**修。/push 盤點順帶過 ledger。
 
 ### 影響面證據卡（2026-08-20 起）
 
@@ -62,7 +62,7 @@
 
 ### 模型選配
 
-- **大腦**：維持 `opus`，不自行切換（2026-11-05 Mike 裁示，取代 09-10 的 `claude-fable-5-1`；用量數據見 memory `context-budget-diagnosis`）。可執行義務綁 /ship 盤點：本工程大腦 Read 圖片＝0 且無 >50KB 整檔 Read → 提醒 Mike 重跑用量診斷複查 `opus` 成本。
+- **大腦**：維持 `opus`，不自行切換（2026-11-05 Mike 裁示，取代 09-10 的 `claude-fable-5-1`；用量數據見 memory `context-budget-diagnosis`）。可執行義務綁 /push 盤點：本工程大腦 Read 圖片＝0 且無 >50KB 整檔 Read → 提醒 Mike 重跑用量診斷複查 `opus` 成本。
 - **有 agent 檔的角色**：以 `~/.claude/agents/*.md` frontmatter 為準；金流／架構／複雜演算法派 implementer 帶 `model: opus`。
 - **臨時 prompt 診斷／選型研究**：`opus`。
 - 派工形式、上限、探路要不要派：唯一依據 /feature「派工紀律」。
@@ -71,7 +71,7 @@
 
 - **主 checkout 恆 dev、一切改動在 worktree**；分支／worktree 生命週期、合併紀律一律 /feature-flow。**每 repo 同時至多一個大腦 session**。
 - **裁決題預設攢批**：寫 wip.md「待 Mike 裁示」（附建議答案），僅阻塞關鍵路徑者即時問；同題型 ≥2 次 → 提案轉預授權。
-- **預授權**（2026-08-20）：(1) 可逆的純 UI 呈現取捨 → 大腦先裁先做；(2) 疑似阻斷的守衛／資料衝突 → 先事實核驗，核驗＝no-op 則不動作不請示，證據附 /ship 盤點。
+- **預授權**（2026-08-20）：(1) 可逆的純 UI 呈現取捨 → 大腦先裁先做；(2) 疑似阻斷的守衛／資料衝突 → 先事實核驗，核驗＝no-op 則不動作不請示，證據附 /push 盤點。
 
 ### 回應風格
 
@@ -84,7 +84,7 @@
 
 ### Commit / Push 紀律
 
-- 驗收／review 通過後 commit，然後**停下**；push 走 /ship。一個 /feature 落 dev 恆一顆 commit（規則在 /feature-flow 階段四）。
+- 驗收／review 通過後 commit，然後**停下**；push 走 /push。一個 /feature 落 dev 恆一顆 commit（規則在 /feature-flow 階段四）。
 - **未經 Mike 明確授權絕不 `git push`**（hook 硬攔）。Mike 說「推」之後：push → `git ls-remote` 比對 hash。`dev` 推 remote 前務必問；feature 分支不推。
 
 ### API collection
@@ -95,7 +95,7 @@
 
 - 存檔自動 format（`.go` gofmt、前端 prettier）。
 - Hook 擋**直接形式**：`rm -rf`、force push、`git add .`、`git branch -D`、`git clean -f` 硬擋；push、`reset --hard`、遞迴刪除強制詢問。**包一層（npm script、make、sh）hook 看不進**——間接執行前先讀 script。刪除用精確路徑、加檔逐一指定。
-- push 閘門：單純形式（`[cd <path> &&] git [-C <path>] push [<remote>] [<ref>...]`，選項只接受 `-u`）缺敏感檔證據硬擋，證據齊才詢問；hook 抓得到的其他形式詢問並標「無法判定」，不驗證據（已知漏抓見 /ship）。`gate-evidence waive` 直接形式一律詢問。
+- push 閘門：單純形式（`[cd <path> &&] git [-C <path>] push [<remote>] [<ref>...]`，選項只接受 `-u`）缺敏感檔證據硬擋，證據齊才詢問；hook 抓得到的其他形式詢問並標「無法判定」，不驗證據（已知漏抓見 /push）。`gate-evidence waive` 直接形式一律詢問。
 - nginx 與 DB migration：repo 內檔案的 Edit／Write 不問（系統 nginx 路徑與含 `sites-enabled`／`sites-available` 的路徑才問）；實際執行（含 `supabase db push`）**一律詢問 Mike**；push 時驗證據。
 - 免問只限單純唯讀指令：`grep`、`cat`、`git log`、`git add <檔>`、帶訊息的 `git commit`、完全等於 `nginx -t`、`gate-evidence record`／`check` 等，可接 `|`，開頭可帶一段 `cd <path> &&`；含 glob、brace、反斜線、重導向就照問。
 - 執行期例外與壞 payload 走 ask，不放行（hook 語法錯誤、被 timeout 殺掉接不住，改 hook 後必跑測試）。

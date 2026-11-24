@@ -1,9 +1,9 @@
 ---
-name: ship
-description: 把本地 dev 的累積成果推上 remote 的收尾流程：盤點 → 授權 → push → ls-remote 驗證。Mike 說「推」「上線」「ship」時使用。
+name: push
+description: 把本地 dev 的累積成果推上 remote 的收尾流程：盤點 → 授權 → push → ls-remote 驗證。Mike 說「推」「上線」「push」時使用。
 ---
 
-# /ship — push 前批次收尾
+# /push — push 前批次收尾
 
 Push 是全域規則裡唯一必經 Mike 明確授權的動作。（各需求的 Mike 手動實測已在 review chain 手測並行站完成——2026-08-20 起本 skill 不再設批次手測站；多需求並行時 Mike 可自行決定在此加測一輪**組合態**，大腦盤點時主動提醒「本批含 N 個前端需求，要不要組合態走一輪」即可，不強制。）
 

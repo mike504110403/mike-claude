@@ -44,7 +44,7 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 - 合併依 /feature-flow 階段三、四（階段四含合併後重驗與三清）。
 - **改動面含前端**：合併回 dev 的前提是 review chain 的「Mike 手測並行站」已過（依全域矩陣；/auto-e2e 僅 on-demand，用於 Mike 點名代測或 /bug runtime 重現）。API 合約以 bruno collection 為對照（有 bruno/ 的專案先 /bruno-sync 增量同步再驗）。
-- commit 後停下；push 走 /ship。
+- commit 後停下；push 走 /push。
 
 ## 派工紀律（全域唯一 source，2026-09-18 自 CLAUDE.md 遷入；/review-chain、/bug、/mega 只引用）
 

@@ -60,7 +60,7 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
 5. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
 6. **map delta 更新**（該 repo 在 `~/.claude/maps/` 有 map 才做）：本需求觸及的 map 條目逐條校正（function 改名/搬家/消費者增減），該區塊「最後核對」戳更新為今日＋dev 新 hash；沒觸及任何 map 條目則跳過。
 7. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）、刪本需求 e2e spec 目錄（`~/.claude/e2e/specs/<repo>-<需求slug>/`，若有）。
-8. 停下。push 走 **/ship**。
+8. 停下。push 走 **/push**。
 
 ### Commit 訊息精簡規則（dev 上那顆）
 
@@ -86,7 +86,7 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
 - 大腦所有 git 操作一律 `git -C <絕對路徑>` 顯式指路徑；破壞性指令（reset/merge/branch）前先 `git branch --show-current` 確認該 checkout 的 HEAD 是預期分支。
 - 主 checkout 不切分支、不直接改 code；一切改動發生在 worktree。
 - **清 worktree 前先 `git status`**：工人回報「乾淨」不一定準（實測遇過工人改完更好的版本沒 commit 就回報）。
-- 不 push 任何分支（push 只發生在 /ship）。清理只用 `-d` / `remove`，絕不 `-D` / `--force`（hook 硬擋）。
+- 不 push 任何分支（push 只發生在 /push）。清理只用 `-d` / `remove`，絕不 `-D` / `--force`（hook 硬擋）。
 
 ## 階段顯示（statusline，2026-08-31 起；2026-09-18 自 CLAUDE.md 遷入）
 

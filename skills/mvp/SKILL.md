@@ -26,7 +26,7 @@ description: 新專案 MVP lane：專案未上線、無真實用戶、無真實�
 | 既有雷 ledger、/wip 看板、裁決攢批 | 不開；看到的範圍外問題丟 TODO 另開一片；裁決題即時問 |
 | ADR | 不寫；技術選型一行寫進專案 `CLAUDE.md`（畢業時補必要 ADR） |
 | 實作工人同時上限 5 | **上限 2**，大腦親寫優先；工人只寫檔不碰 git，**大腦逐一 commit**（共用 checkout，避免 index 互相污染）；兩工人改同檔則不並行 |
-| Commit／Push 紀律、/ship | 自驗過就 commit 到 `main` 繼續下一片，不停下；push 不走 /ship：Mike 說「推」→ build 一次 → push → `git ls-remote` 比對 hash |
+| Commit／Push 紀律、/push | 自驗過就 commit 到 `main` 繼續下一片，不停下；push 不走 /push：Mike 說「推」→ build 一次 → push → `git ls-remote` 比對 hash |
 | 回報五點格式 | 一段式（見下） |
 
 ## 照舊不變（紅線）

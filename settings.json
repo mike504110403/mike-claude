@@ -137,6 +137,12 @@
             "command": "python3 ~/.claude/hooks/format_on_save.py",
             "timeout": 90,
             "statusMessage": "自動 format…"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/write_checks.py",
+            "timeout": 10,
+            "statusMessage": "寫入檢查…"
           }
         ]
       },

@@ -28,7 +28,7 @@ Vue 專案不寫測試檔（Mike 裁示），防線 = typecheck ＋ 瀏覽器實
 
 ## 瀏覽器實測（行為驗證層，2026-08-20 改版）
 
-取代測試檔的行為驗證層，/quick 與 /feature 驗收都適用。**行為驗證主防線＝Mike 地端手測**（review chain 手測並行站，見 /review-chain）；/auto-e2e（Playwright 腳本實測）與 ui-reviewer 僅 on-demand：
+取代測試檔的行為驗證層，/quick 與 /feature 驗收都適用。**行為驗證主防線＝Mike 地端手測**（review chain 的 Mike 手測站，先於 reviewer，見 /review-chain）；/auto-e2e（Playwright 腳本實測）與 ui-reviewer 僅 on-demand：
 
 0. **環境前提**：需要真後端的頁面（登入、取資料、送出寫入）先用 `/local-stack` 起地端全棧；環境不可得時走該 skill 的降級階梯，並在 wip.md 記一筆驗證債。**不要拿 dev server 預設的 API 位址就開測——多個專案的 `.env` 預設指向正式線上**，在上面按下「送出」是真的在改線上資料。
 1. 起該專案 dev server（背景跑，用專案既有 script），**明確覆蓋 API 位址指向地端**。指向判準＝**經 proxy 的請求得到只有地端才可能的回應**（seed 帳密登入成功、地端獨有資料），頁面 200 什麼都不證明；Vite env 分層（`.env` → `.env.[mode]` → process env）全部查完才能宣告預設值。

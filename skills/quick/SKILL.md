@@ -20,8 +20,8 @@ description: 低風險小改 lane：預估 ≤3 檔案、行為變更小、有�
 
 1. **宣告**：第一句「走 /quick，因為…；改動面：後端／前端／前後端」。驗證義務照全域「改動面 × 驗證義務」矩陣，不在此重抄。
 2. 依 /feature-flow 階段一開需求 worktree（quick 也開——主 checkout 恆 dev 不直改），大腦在需求 worktree 裡**直接改**（不寫 brief、不派工）。
-3. **自驗**：走 /verify 的直改裁剪（自我 diff 過範圍＋照改動面矩陣親跑證據，附實際輸出）。
-4. Review chain **不跑**。
+3. **自驗**（review 與 commit 之前）：走 /verify 的直改裁剪（自我 diff 過範圍＋照改動面矩陣親跑證據，附實際輸出；repo 有 `verify.json` 時 `verify-run` 見 /verify 第 4 步），再跑 `~/.claude/bin/diff-surface --repo <worktree> --base <切自的 commit> --include-worktree`（含未 commit 改動）。`lane 下限` 高於 /quick → 當下依下方跳線宣告升級（邊界卡在升級後出）。
+4. **Review**：照 /review-chain 的「/quick 例外」；要派時先跑 `~/.claude/bin/diff-surface --repo <worktree realpath> --base <切自的 commit> --include-worktree --record`，修復輪每輪重跑。
 5. 改動涉及 API 且專案有 `bruno/` → 照跑 /bruno-sync。
 6. Commit 後停下。
 

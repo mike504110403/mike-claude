@@ -26,6 +26,7 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 - 每個子任務用 /brief 八欄模板寫自足 brief；seam 沒議定不派工。
 - **拆分粒度（2026-08-20 起）**：盡可能拆細——一個工人一個單一意圖的小切片（一個 seam），壓低每個 agent 的 context、讓它只看得到自己的事。細拆的下限是**切工硬規則：共用元件／檔案與其全部消費者必須劃給同一個工人**（拆開會讓 reviewer 只見半成品、報幻影問題——返點案四次實證）；做不到同工人時，reviewer 的 prompt 必須明寫「另一半在別的 worktree，以下項目不要報」。
 - **brief 寫完直接派工＋影子審查並行**（2026-09-02 起，取代 08-24 的純自檢制）：前提是邊界卡已給 Mike 點頭；BRAIN-CHECKLIST 自檢照做、事實斷言照舊動筆前開檔驗。派 implementer 的**同一則訊息**並行派 brief-reviewer（影子，in-process subagent，報告＝最終回覆）審同一份 brief——影子報 **BLOCKER** → 立即 TaskStop 該工人、修 brief 重派；MAJOR/minor → 攢到該工人 /verify 驗收時一併處理，不中斷工人。影子屬「不必逐個親驗」類（上限 8），不佔實作工人名額；延遲趨近零，換回 08-24 砍閘門後失去的第二道防線（停用期間大腦自檢漏檢實證見 rejection-log）。
+- **brief-lint 與影子的 observe 期（10 份 brief）**：派工前跑 `python3 ~/.claude/bin/brief-lint <brief> --repo <worktree> --run`，`summary: problems=` 須為 0，或 `[cmds]` 的 problem 逐條以「（不實跑：理由）」ACK（refs／SNIPPET_MISMATCH／IGNORED_PATH 不可 ACK，必須修），才派工；observe 期內影子 brief-reviewer 照派。每份 brief 把「brief-lint 判紅項」與「影子 BLOCKER/MAJOR」對照記進 memory `brief-observe`（欄位以該檔現表為準，大腦記）。滿 10 份後，若 brief-lint 攔下影子在 A/B/G 家族（memory rejection-log 家族表）的攔截 ≥80%，由 Mike 裁是否對非高風險改動停派影子；影子派發只由本規則管，金流／認證／migration 永遠保留影子。
 - **派工前環境前提親驗**：brief 工作環境欄引用的環境事實（DB／容器／服務位址）派工當下驗一次——環境狀態要驗不要記；前提已失效就先修環境或改 brief，別讓工人自行起 infra。
 - 分支與 worktree 一律走 /feature-flow（先 /sync-dev）。
 - `run_in_background: true` 平行派工；**派工形式（implementer 具名 teammate、其餘 subagent）**、命名、單波上限、模型選配依本 skill「派工紀律」節與全域「模型選配」。
@@ -38,12 +39,14 @@ description: 標準工程 lane：範圍明確、超出 /solo（多線意圖、�
 
 ### 4. Review chain（驗收通過後）
 
-一律走 **/review-chain**（觸發表、對照物 = brief、按嚴重度分層重跑、通過 TaskStop 收工）。**改動面含前端** → 派 reviewer 的同一時刻起 /local-stack 讓 Mike 並行手測（站點細節在 /review-chain）。
+一律走 **/review-chain**（diff-surface 觸發、對照物 = brief、按嚴重度分層重跑、通過 TaskStop 收工）。**改動面含前端** → /verify 通過後先 /local-stack 進 Mike 手測站確認需求，需求定案才派 reviewer（順序在 /review-chain「Mike 手測站」）。
+
+**lane 只決定執行形態**（誰寫、要不要派工、要不要拆波），不決定檢查強度：所有 lane 的基線檢查相同，規則見 /review-chain「所有 lane 的基線檢查」；加碼審查（security／db-reviewer）由 diff-surface 命中觸發。
 
 ### 5. 收尾
 
 - 合併依 /feature-flow 階段三、四（階段四含合併後重驗與三清）。
-- **改動面含前端**：合併回 dev 的前提是 review chain 的「Mike 手測並行站」已過（依全域矩陣；/auto-e2e 僅 on-demand，用於 Mike 點名代測或 /bug runtime 重現）。API 合約以 bruno collection 為對照（有 bruno/ 的專案先 /bruno-sync 增量同步再驗）。
+- **改動面含前端**：合併回 dev 的前提是 Mike 手測站已過（先於 reviewer，見 /review-chain；依全域矩陣；/auto-e2e 僅 on-demand，用於 Mike 點名代測或 /bug runtime 重現）。API 合約以 bruno collection 為對照（有 bruno/ 的專案先 /bruno-sync 增量同步再驗）。
 - commit 後停下；push 走 /push。
 
 ## 派工紀律（全域唯一 source，2026-09-18 自 CLAUDE.md 遷入；/review-chain、/bug、/mega 只引用）

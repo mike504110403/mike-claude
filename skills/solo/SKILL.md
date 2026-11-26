@@ -22,8 +22,8 @@ description: 中型單線 lane：超出 /quick（約 4-8 檔）但單一意圖�
 
 1. **宣告**：第一句「走 /solo，因為…；改動面：後端／前端／前後端」。驗證義務照全域「改動面 × 驗證義務」矩陣。
 2. 依 /feature-flow 階段一開需求 worktree（主 checkout 恆 dev 不直改），大腦在需求 worktree 裡**直接改**。
-3. **自驗**：走 /verify 的直改裁剪（自我 diff 過範圍＋照改動面矩陣親跑證據）。
-4. **Review**：走 /review-chain（對照物 = 宣告文擴寫的任務描述；打回修完重跑全鏈）。
+3. **自驗**（review 與 commit 之前）：走 /verify 的直改裁剪（自我 diff 過範圍＋照改動面矩陣親跑證據；repo 有 `verify.json` 時 `verify-run` 見 /verify 第 4 步），再跑 `~/.claude/bin/diff-surface --repo <worktree> --base <切自的 commit> --include-worktree`（含未 commit 改動）。`lane 下限` 高於 /solo → 當下依下方跳線宣告升級（邊界卡在升級後出）。
+4. **Review**：走 /review-chain——派 reviewer 前跑 `~/.claude/bin/diff-surface --repo <worktree realpath> --base <切自的 commit> --include-worktree --record`，reviewer 以其清單為準；修復輪每輪重跑 `--record`（對照物 = 宣告文擴寫的任務描述；打回修完重跑全鏈）。
 5. 改動涉及 API 且專案有 `bruno/` → 照跑 /bruno-sync。
 6. Commit 後停下。
 

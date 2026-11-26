@@ -15,7 +15,11 @@ description: done≠done 驗收積木：工人回報後大腦親驗的固定步�
 1. **確認 commit 存在**：`git -C <worktree> log --oneline -5`。要驗的是「即將被合併的那個 commit 裡有什麼」——用 `git show <branch>:<path>` 或 `git diff <base>..<branch>`，**不要 grep worktree 現況**（工作目錄可能有未 commit 的內容，合併進去的分支不含它）。
 2. **範圍對帳**：`git diff --stat` 對 brief 範圍欄——多改的（scope creep）與少改的都要追。
 3. **抽讀關鍵檔**：不信回報宣稱的規格版本，以 commit 內容為準。
-4. **親跑可執行證據**：跑什麼**唯一依據全域 CLAUDE.md「改動面 × 驗證義務」矩陣**（本檔不重抄，防漂移）；指令形式與已知基線先查 ~/.claude/PROJECTS.md「驗證指令與已知基線」表——**基線只決定歸屬、不決定豁免**，基線紅照列順路發現，新增紅才擋驗收；表沒有的 repo 順手補一行。
+4. **親跑可執行證據**：跑什麼**唯一依據全域 CLAUDE.md「改動面 × 驗證義務」矩陣**（本檔不重抄，防漂移）；指令形式如下：
+   - repo 有 `~/.claude/checks/<key>/verify.json` → 一律 `~/.claude/bin/verify-run --repo <worktree> --base <切自的 commit>`（MISSING_ENV 只在帶 `--base` 時掃描），貼結果表與 `RESULT` 行；`NEW_FAIL`、`UNPARSED_FAIL`、`NO_VERBOSE`、`MISSING_ENV` 逐行讀（`--help`：NO_VERBOSE 與 UNPARSED 都使該 command 失敗，MISSING_ENV 只回報不擋）。結果表 `SKIP` 欄非零 → 判讀該保證是否真的被驗到（依 VERIFICATION-TRAPS「SKIP 也是綠」），在回報明寫。
+   - 沒有 → 沿用 ~/.claude/PROJECTS.md「驗證指令與已知基線」表，並在首次驗證時補一份 verify.json（格式看 `verify-run --help`）。
+   - PROJECTS.md 該 repo 條目中**依改動路徑條件執行**的指令（如「碰到 X 才加跑 Y」）verify.json 表達不了，有 verify.json 時仍照條目另跑。
+   - **基線只決定歸屬、不決定豁免**：`known_fail` 吸收的基線紅照列順路發現，新增紅才擋驗收。
    - 工人未附實際執行輸出，視同未完成。
    - **截圖類證據不 Read 進大腦 context**：工人／reviewer 附的截圖存檔即可，判讀交 subagent 回報結論（唯一依據全域「Context 預算紀律」截圖列）。
    - 帶變異證明的：抽查時**選工人沒做過的變異**，一律用 `~/.claude/bin/mutate --file <檔> --sed '<替換式>' --test '<測試指令>' [--cwd <目錄>]` 一鍵跑完「備份→套變異→印 diff→跑測試→還原」——它內建三道踩過的坑防線：diff 為空判 FAIL（變異沒套上）、全註解變動警告（perl/sed 只換到註解的假陰性）、還原用 cp 備份絕不 `git checkout --`（未 commit 改動會被洗掉，2026-08-06 工人、2026-08-19 大腦各踩一次）。exit 0＝紅（防護有效）、4＝變異存活、3＝沒套上。腳本不可用時 fallback 手工循環，照同三道防線做。批次：`bash ~/.claude/bin/mutate --batch <brief>.mutations [--cwd <目錄>]`，結果表與逐條 log 落 `--out`（預設 `<清單檔所在目錄>/mutate-out/`）；大腦抽查仍用單條模式。
@@ -33,7 +37,7 @@ description: done≠done 驗收積木：工人回報後大腦親驗的固定步�
 
 ## 直改 lane（/quick、/solo）裁剪
 
-沒有工人回報，1-3 免；自我 `git diff` 過一眼範圍 ＋ 執行第 4 步親跑證據。
+沒有工人回報，1-3 免；自我 `git diff` 過一眼範圍 ＋ 執行第 4 步親跑證據。未 commit 時 `--base` 只掃已 commit 範圍，MISSING_ENV 不會掃到未 commit 的改動——直改 lane 人工核對相關測試的 env。
 
 ## 操作紀律
 
@@ -43,4 +47,4 @@ description: done≠done 驗收積木：工人回報後大腦親驗的固定步�
 
 ## 通過之後
 
-派工 lane → 呼叫 /review-chain；直改 /solo → 呼叫 /review-chain；直改 /quick → 不 review，直接收尾。
+派工 lane → 呼叫 /review-chain；直改 /solo → 呼叫 /review-chain；直改 /quick → 依 /review-chain 的「/quick 例外」，之後收尾。

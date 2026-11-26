@@ -1,6 +1,6 @@
 ---
 name: ui-reviewer
-description: on-demand UI 行為審查代理，Mike 點名要自動化 UI 審查時才派（不在 /review-chain 觸發表）。用 playwright-cli 把 brief 的實測步驟實際走一遍，只測不改。
+description: on-demand UI 行為審查代理，Mike 點名要自動化 UI 審查時才派（不在 /review-chain 的 reviewer 觸發：diff-surface 輸出與人工補充表）。用 playwright-cli 把 brief 的實測步驟實際走一遍，只測不改。
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

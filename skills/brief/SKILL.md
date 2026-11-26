@@ -77,4 +77,10 @@ done 時必附，缺一視同未完成：
 
 有 graft 圖的 repo：「範圍」欄的檔案清單與消費者清單以 `graft callers`／`graft blast` 產出為底（2026-09-08 起，見全域「影響面證據卡」）。拆任務、寫 brief、派工前，先過 [BRAIN-CHECKLIST.md](BRAIN-CHECKLIST.md)（含 FAKE-GUARDS 與 VERIFICATION-TRAPS 兩本型錄的指引）。工人不需要讀它——模板以上就是工人的全部。
 
-派工前對 brief 跑 `python3 ~/.claude/bin/brief-lint <brief> --repo <worktree> --run`（2026-10-27 起）：機械檢查 `檔案:行號` 引用、驗收指令實跑（FAIL／SKIP／ZERO_MATCH）、範圍內建構子呼叫點枚舉（含測試檔）。逐條判讀：MISSING_FILE／LINE_OUT_OF_RANGE 一律先修；引用既有檔案、既有測試、既有 env 的指令必須通過；本 brief 新增物造成的紅是預期，在 brief 該行註明「（新增，派工前預期紅）」。它只驗看得到的形狀，不免除 BRAIN-CHECKLIST 的判斷題；DENIED／PLACEHOLDER／UNLISTED 的指令都沒有執行，仍要人工判斷；exit 0 不等於全部指令都跑過。
+派工前對 brief 跑 `python3 ~/.claude/bin/brief-lint <brief> --repo <worktree> --run`，最後一行 `summary: problems=` 必須為 0，才派工。
+
+- `[refs]` 的 MISSING_FILE／LINE_OUT_OF_RANGE／SNIPPET_MISMATCH 與 `[scope]` 的 IGNORED_PATH **不可 ACK，必須修**。
+- `[cmds]` 的 problem 可逐條在該行最後一個 inline code 後以「（不實跑：理由）」ACK；本 brief 新增物造成的預期紅寫「（不實跑：新增，派工前預期紅）」。**既有檔案、既有測試、既有 env 的紅不可 ACK，只有本 brief 新增物可 ACK。ACK 只對 `[cmds]` 有效。**
+- 它只驗看得到的形狀，不免除 BRAIN-CHECKLIST 的判斷題。DENIED／PLACEHOLDER 不計 problem 也未執行；UNLISTED 只有「頂層列點第一個、指令形狀」的才計入 problems，其餘只印不計；`[callers]` 呼叫點枚舉不計入 problems——這幾類仍要人工看。exit 0 不等於全部指令都跑過。
+
+brief 中必須宣稱的程式碼事實寫成錨點 `` `路徑:行號`「原文片段」 ``（brief-lint 逐行比對，不符印 SNIPPET_MISMATCH）；工人自己讀得到的事實不必寫。

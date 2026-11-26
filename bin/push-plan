@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""push-plan — push 前存「待推 commit 快照」，push 前比對，防止盤點後別的 session 合入的 commit 被一起推上去。
+
+用法：
+  push-plan snapshot --repo <路徑> [--remote origin] [--branch dev] [--no-fetch]
+      先 git fetch <remote> <branch>（--no-fetch 跳過），列出 <remote_head>..<local_head> 的 commit，
+      寫快照 ${PUSH_PLAN_STATE:-$HOME/.claude/state/push-plan}/<主checkout basename>-<branch>.json，
+      最後一行印建議 push 指令（以 local_head hash 當 src）。
+  push-plan check --repo <路徑> [--branch dev] [--no-fetch]
+      重新取 local_head 與 <remote>/<branch>，與快照比對；有差異時印出
+      「remote 新增」（remote 前進的 commit）、「新增」「消失」（待推清單與快照的差集）。
+  push-plan --help
+
+exit code：
+  0  snapshot 成功 / check 一致
+  1  check 發現本地或 remote 分支與快照不同
+  2  無快照、快照格式錯誤或歸屬不符、git 失敗或未預期錯誤
+  3  snapshot 時沒有待推 commit（不寫快照）
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import NamedTuple
+
+EXIT_OK, EXIT_CHANGED, EXIT_ERROR, EXIT_NOTHING_TO_PUSH = 0, 1, 2, 3
+REQUIRED_FIELDS = ("repo", "remote", "branch", "local_head", "remote_head", "commits")
+
+
+class PushPlanError(Exception):
+    pass
+
+
+def git(repo, *args):
+    result = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise PushPlanError(f"git {' '.join(args)} 失敗：{result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def main_checkout(repo):
+    common_dir = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    return str(Path(common_dir).parent)
+
+
+def snapshot_path(main, branch):
+    state_dir = Path(os.environ.get("PUSH_PLAN_STATE") or Path.home() / ".claude/state/push-plan")
+    return state_dir / f"{Path(main).name}-{branch.replace('/', '_')}.json"
+
+
+def resolve_heads(repo, remote, branch):
+    local_head = git(repo, "rev-parse", f"refs/heads/{branch}")
+    remote_head = git(repo, "rev-parse", f"refs/remotes/{remote}/{branch}")
+    return local_head, remote_head
+
+
+class LogEntry(NamedTuple):
+    commit: str
+    short: str
+    subject: str
+
+
+def parse_log_line(line):
+    commit, _, rest = line.partition(" ")
+    short, _, subject = rest.partition(" ")
+    return LogEntry(commit, short, subject)
+
+
+def log_entries(repo, older, newer):
+    lines = git(repo, "log", "--format=%H %h %s", f"{older}..{newer}").splitlines()
+    return [parse_log_line(line) for line in lines]
+
+
+def subject_of(repo, commit):
+    return git(repo, "log", "-1", "--format=%s", commit)
+
+
+def labelled_line(label, commit, subject):
+    return f"{label} {commit} {subject}"
+
+
+def cmd_snapshot(args):
+    main = main_checkout(args.repo)
+    if not args.no_fetch:
+        git(main, "fetch", args.remote, args.branch)
+    local_head, remote_head = resolve_heads(main, args.remote, args.branch)
+    pending = log_entries(main, remote_head, local_head)
+    if not pending:
+        print("無待推 commit")
+        return EXIT_NOTHING_TO_PUSH
+    snapshot = {
+        "repo": main,
+        "remote": args.remote,
+        "branch": args.branch,
+        "local_head": local_head,
+        "remote_head": remote_head,
+        "commits": [entry.commit for entry in pending],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path = snapshot_path(main, args.branch)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n")
+    for entry in pending:
+        print(f"{entry.short} {entry.subject}")
+    print(f"git -C {main} push {args.remote} {local_head}:{args.branch}")
+    return EXIT_OK
+
+
+def load_snapshot(main, branch):
+    path = snapshot_path(main, branch)
+    if not path.is_file():
+        raise PushPlanError(f"找不到快照：{path}")
+    snapshot = json.loads(path.read_text())
+    for field in REQUIRED_FIELDS:
+        if field not in snapshot:
+            raise PushPlanError(f"快照格式錯誤：缺 {field}")
+    return snapshot
+
+
+def verify_ownership(snapshot, main, branch):
+    if snapshot["repo"] != main:
+        raise PushPlanError(f"快照 repo 與主 checkout 不一致：快照={snapshot['repo']} 現在={main}")
+    if snapshot["branch"] != branch:
+        raise PushPlanError(f"快照 branch 與指定分支不一致：快照={snapshot['branch']} 現在={branch}")
+
+
+def cmd_check(args):
+    main = main_checkout(args.repo)
+    snapshot = load_snapshot(main, args.branch)
+    verify_ownership(snapshot, main, args.branch)
+    remote = snapshot["remote"]
+    if not args.no_fetch:
+        git(main, "fetch", remote, args.branch)
+    local_head, remote_head = resolve_heads(main, remote, args.branch)
+    if (local_head, remote_head) == (snapshot["local_head"], snapshot["remote_head"]):
+        print("快照一致")
+        return EXIT_OK
+    remote_advanced = log_entries(main, snapshot["remote_head"], remote_head)
+    pending_now = log_entries(main, remote_head, local_head)
+    snapshot_commits = set(snapshot["commits"])
+    pending_hashes = {entry.commit for entry in pending_now}
+    remote_hashes = {entry.commit for entry in remote_advanced}
+    landed_on_remote = [e for e in remote_advanced if e.commit in snapshot_commits]
+    remote_new = [e for e in remote_advanced if e.commit not in snapshot_commits]
+    added_locally = [e for e in pending_now if e.commit not in snapshot_commits]
+    vanished = [c for c in snapshot["commits"] if c not in pending_hashes and c not in remote_hashes]
+    for entry in remote_new:
+        print(labelled_line("remote 新增", entry.commit, entry.subject))
+    for entry in landed_on_remote:
+        print(labelled_line("已上 remote", entry.commit, entry.subject))
+    for entry in added_locally:
+        print(labelled_line("新增", entry.commit, entry.subject))
+    for commit in vanished:
+        print(labelled_line("消失", commit, subject_of(main, commit)))
+    print(f"local_head {snapshot['local_head']} -> {local_head}")
+    print(f"remote_head {snapshot['remote_head']} -> {remote_head}")
+    return EXIT_CHANGED
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog="push-plan", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+    snap = sub.add_parser("snapshot")
+    snap.add_argument("--remote", default="origin")
+    chk = sub.add_parser("check")
+    for p in (snap, chk):
+        p.add_argument("--repo", required=True)
+        p.add_argument("--branch", default="dev")
+        p.add_argument("--no-fetch", action="store_true")
+    snap.set_defaults(run=cmd_snapshot)
+    chk.set_defaults(run=cmd_check)
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
+    try:
+        return args.run(args)
+    except PushPlanError as exc:
+        print(f"push-plan: {exc}", file=sys.stderr)
+    except Exception as exc:
+        print(f"push-plan: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return EXIT_ERROR
+
+
+if __name__ == "__main__":
+    sys.exit(main())

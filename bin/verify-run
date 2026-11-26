@@ -1,0 +1,505 @@
+#!/usr/bin/env python3
+"""verify-run: run a repo's verification commands from a structured config and report only NEW failures.
+
+Usage:
+  verify-run --repo <path> [--key <name>] [--config <file>] [--only <name>[,<name>]]
+             [--base <ref>] [--out <dir>]
+
+Config file (JSON), default ${VERIFY_RUN_CHECKS:-$HOME/.claude/checks}/<key>/verify.json.
+<key> defaults to the main checkout's basename without a leading "." (worktrees resolve to
+the main checkout). --config overrides the lookup.
+
+  {"commands": [{"name": "unit", "cmd": "go test -v ./...", "cwd": ".", "kind": "go",
+                 "env": {"X_DSN": "..."},
+                 "known_fail": ["^TestFlaky$", {"re": "^TestTwice$", "count": 1}],
+                 "fail_pattern": "^FAIL (.*)", "done_pattern": "^== done ==", "note": "..."}]}
+
+commands must be non-empty; name matches [A-Za-z0-9_][A-Za-z0-9_.-]*. kind is go | vue-tsc |
+generic (default generic). cwd is relative to --repo. env is merged into the current
+environment. known_fail entries are regexes matched with re.search against failed items: a
+string absorbs any number of occurrences, {"re", "count"} absorbs at most count occurrences
+(extra occurrences are NEW). fail_pattern (generic only) is a regex matched with re.search per
+output line; its first capture group is the failed item (default: ^\\[FAIL\\]\\s*(.*)).
+done_pattern is a regex that must match some output line (re.search per line) whenever any
+failure was absorbed, proving the command ran to its end.
+
+Each command runs as bash -o pipefail -c with stdin closed; stdout+stderr go to
+<out>/<name>.log (--out default: a fresh tempfile.mkdtemp dir named verify-run-<key>-*).
+--only selecting no command is an error.
+
+Failed items: go = "--- FAIL: <Test>" names (subtests included, as Test/sub) and
+"FAIL<TAB><pkg>" pkgs. go output is split into per-package blocks, each ended by a line
+"ok<ws><pkg>", "FAIL<ws><pkg>" or "?<ws><pkg>" (go prints packages one after another; "<TAB><pkg><TAB>coverage: ..." from
+-cover for a package without test files counts as a "?" end). Inside a
+block: every "=== RUN <Test>" (Benchmark* excluded) without a "--- PASS/FAIL/SKIP: <Test>" in
+the same block becomes "<Test> [no result]"; a failed pkg that failed to build or set up becomes
+"<pkg> [build failed]" or "<pkg> [setup failed]"; any other failed pkg can be absorbed only
+when its block has at least one "--- FAIL" and all of them were absorbed, otherwise it becomes
+"<pkg> [package failed]"; non-empty output after the last package line (other than a bare
+"FAIL"/"PASS") means the run stopped mid-package and becomes
+"<last RUN name or -> [no package result]". vue-tsc = "<path>:error TS<code>" from lines that start with
+"<path>(<line>,<col>): error TS", and any other line containing "error TS<code>" becomes
+"<line> [unlocated]". The [build failed], [setup failed], [no result], [package failed],
+[no package result] and [unlocated] items can never be absorbed by known_fail.
+A command killed by a signal or exiting with 128 or more (SIGPIPE 141, SIGKILL 137) absorbs
+nothing and prints UNPARSED_FAIL <name> killed exit=<n>; this also hits an ordinary generic
+command that exits 128 or more by its own choice (judged red, never green). For kind go only
+exit 1 (go test's failure status) may absorb: any other non-zero exit, such as 124 from an
+external timeout, is reported as killed too. cmd must not truncate the output it
+produces (no "| tail", "| head" and the like): a truncated log hides failures and a closed
+pipe kills the producer.
+A command passes when it exits 0, or exits non-zero with at least one failed item, every
+item absorbed by known_fail, and a completion marker present. The marker is done_pattern
+(choose the script's last summary line, e.g. the final "ok"/"ALL PASS" line, so a crash
+before it is detected); for kind go without done_pattern it is a line starting with "ok " or
+"FAIL<TAB>"/"FAIL "; for kind vue-tsc without done_pattern none is required (protection
+there is [unlocated]; a vue-tsc crash that prints no "error TS" line goes undetected).
+Output lines: NEW_FAIL / KNOWN_FAIL / UNPARSED_FAIL <name> no_items exit=<n> log=<path>
+(non-zero exit with no failed item extracted) or UNPARSED_FAIL <name> incomplete (items
+absorbed but no completion marker) / SKIP (go "--- SKIP:") / NO_VERBOSE (go output is not
+"go test -v" output: no "=== RUN" line at all, or an ok/FAIL package block without one, except
+"?", "[no tests to run]" and build/setup-failed blocks; counts as UNPARSED and fails the
+command) / MISSING_ENV.
+MISSING_ENV (only with --base, which scans the committed range <base>...HEAD only, from the
+git toplevel): a *_test.go next to a changed file has a string literal NAME ending in _DSN,
+_URL or _ADDR that neither any command's env nor the current environment provides; reported,
+never blocking.
+The last lines are a result table, one row per command
+"name | exit | NEW n | KNOWN n | UNPARSED n | SKIP n | log", and RESULT PASS or RESULT FAIL.
+
+Exit codes: 0 all commands pass; 1 any command fails; 2 missing/invalid config or unexpected error.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+KINDS = ("go", "vue-tsc", "generic")
+NAME_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
+DEFAULT_FAIL_PATTERN = r"^\[FAIL\]\s*(.*)"
+ENV_NAME_LITERAL_RE = re.compile(r'"([A-Z0-9_]+_(?:DSN|URL|ADDR))"')
+GO_SKIP_RE = re.compile(r"^\s*--- SKIP: (\S+)", re.M)
+GO_RUN_RE = re.compile(r"^=== RUN\s+(\S+)")
+GO_RESULT_RE = re.compile(r"^\s*--- (?:PASS|FAIL|SKIP): (\S+)")
+GO_FAIL_RE = re.compile(r"^\s*--- FAIL: (\S+)")
+GO_BLOCK_END_RE = re.compile(r"^(ok|FAIL|\?)[ \t]+(\S+)(.*)$")
+GO_COVER_END_RE = re.compile(r"^\t(\S+)\t+(coverage:.*)$")
+GO_BUILD_FAILED_RE = re.compile(r"\[(?:build|setup) failed\]")
+GO_DONE_RE = re.compile(r"^(?:ok |FAIL[\t ])", re.M)
+TSC_LOCATED_RE = re.compile(r"^([^\s(:][^\s(]*)\(\d+,\d+\): error (TS\d+)")
+TSC_ERROR_RE = re.compile(r"error TS\d+")
+
+
+class UsageError(Exception):
+    pass
+
+
+class Unparsed(Enum):
+    NO_ITEMS = "no_items"
+    INCOMPLETE = "incomplete"
+    KILLED = "killed"
+
+
+@dataclass(eq=False)
+class Failure:
+    name: str
+    absorbable: bool = True
+
+
+@dataclass
+class GoBlock:
+    runs: List[str] = field(default_factory=list)
+    results: set = field(default_factory=set)
+    failed: List[str] = field(default_factory=list)
+    content_lines: int = 0
+    end: Optional[str] = None
+    pkg: str = ""
+    tail: str = ""
+    build_failed: str = ""
+
+    @property
+    def needs_run(self) -> bool:
+        return self.end in ("ok", "FAIL") and "[no tests to run]" not in self.tail and not self.build_failed
+
+
+@dataclass
+class KnownRule:
+    pattern: re.Pattern
+    count: Optional[int]
+
+
+@dataclass
+class Command:
+    name: str
+    cmd: str
+    cwd: str
+    kind: str
+    env: Dict[str, str]
+    known_fail: List[KnownRule]
+    fail_pattern: re.Pattern
+    done_pattern: Optional[re.Pattern]
+
+
+@dataclass
+class Outcome:
+    command: Command
+    exit_code: int
+    log: Path
+    new: List[Failure] = field(default_factory=list)
+    known: List[Failure] = field(default_factory=list)
+    skips: List[str] = field(default_factory=list)
+    unparsed: Optional[Unparsed] = None
+    no_verbose: bool = False
+
+    @property
+    def unparsed_count(self) -> int:
+        return int(self.unparsed is not None) + int(self.no_verbose)
+
+    @property
+    def blocking(self) -> int:
+        return len(self.new) + self.unparsed_count
+
+
+def unique(items: List[str]) -> List[str]:
+    return list(dict.fromkeys(items))
+
+
+def git_output(repo: Path, *args: str) -> str:
+    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    if done.returncode != 0:
+        raise UsageError("git %s failed in %s: %s" % (" ".join(args), repo, done.stderr.strip()))
+    return done.stdout
+
+
+def default_key(repo: Path) -> str:
+    common = git_output(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+    return Path(common).parent.name.lstrip(".")
+
+
+def config_path(args: argparse.Namespace, key: str) -> Path:
+    if args.config:
+        return Path(args.config)
+    root = os.environ.get("VERIFY_RUN_CHECKS") or os.path.join(os.path.expanduser("~"), ".claude", "checks")
+    return Path(root) / key / "verify.json"
+
+
+def compile_regex(source: object, where: str, flags: int = 0) -> re.Pattern:
+    if not isinstance(source, str):
+        raise UsageError("%s: regex must be a string, got %r" % (where, source))
+    try:
+        return re.compile(source, flags)
+    except re.error as exc:
+        raise UsageError("%s: bad regex %r: %s" % (where, source, exc))
+
+
+def parse_known_rule(raw: object, where: str) -> KnownRule:
+    if isinstance(raw, str):
+        return KnownRule(compile_regex(raw, where), None)
+    if isinstance(raw, dict) and "re" in raw:
+        count = raw.get("count")
+        if count is not None and (isinstance(count, bool) or not isinstance(count, int) or count < 0):
+            raise UsageError("%s: count must be a non-negative integer, got %r" % (where, count))
+        return KnownRule(compile_regex(raw["re"], where), count)
+    raise UsageError('%s: known_fail entries are a regex string or {"re": ..., "count": n}' % where)
+
+
+def parse_fail_pattern(raw: dict, kind: str, where: str) -> re.Pattern:
+    if "fail_pattern" in raw and kind != "generic":
+        raise UsageError("%s: fail_pattern is only valid for kind generic" % where)
+    pattern = compile_regex(raw.get("fail_pattern", DEFAULT_FAIL_PATTERN), where)
+    if pattern.groups < 1:
+        raise UsageError("%s: fail_pattern needs a capture group for the failed item" % where)
+    return pattern
+
+
+def parse_done_pattern(raw: dict, where: str) -> Optional[re.Pattern]:
+    if "done_pattern" not in raw:
+        return None
+    return compile_regex(raw["done_pattern"], where, re.M)
+
+
+def parse_command(raw: object) -> Command:
+    if not isinstance(raw, dict) or not isinstance(raw.get("name"), str) or not isinstance(raw.get("cmd"), str):
+        raise UsageError("each command needs string fields name and cmd: %r" % (raw,))
+    name = raw["name"]
+    if not NAME_RE.fullmatch(name):
+        raise UsageError("command name %r must match %s" % (name, NAME_RE.pattern))
+    where = "command %s" % name
+    kind = raw.get("kind", "generic")
+    if kind not in KINDS:
+        raise UsageError("%s: kind must be one of %s, got %r" % (where, KINDS, kind))
+    env = raw.get("env", {})
+    if not isinstance(env, dict) or not all(isinstance(v, str) for v in env.values()):
+        raise UsageError("%s: env must map names to strings" % where)
+    known = raw.get("known_fail", [])
+    if not isinstance(known, list):
+        raise UsageError("%s: known_fail must be a list" % where)
+    rules = [parse_known_rule(entry, where) for entry in known]
+    return Command(name, raw["cmd"], raw.get("cwd", "."), kind, env, rules,
+                   parse_fail_pattern(raw, kind, where), parse_done_pattern(raw, where))
+
+
+def load_commands(path: Path) -> List[Command]:
+    if not path.is_file():
+        raise UsageError("config not found: %s" % path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise UsageError("invalid JSON in %s: %s" % (path, exc))
+    if not isinstance(data, dict) or not isinstance(data.get("commands"), list):
+        raise UsageError('%s must be an object with a "commands" list' % path)
+    commands = [parse_command(raw) for raw in data["commands"]]
+    if not commands:
+        raise UsageError("%s has no commands" % path)
+    names = [c.name for c in commands]
+    if len(set(names)) != len(names):
+        raise UsageError("duplicate command names in %s" % path)
+    return commands
+
+
+def select(commands: List[Command], only: Optional[str]) -> List[Command]:
+    if only is None:
+        return commands
+    wanted = [n for n in only.split(",") if n]
+    unknown = [n for n in wanted if n not in {c.name for c in commands}]
+    if unknown:
+        raise UsageError("--only names not in config: %s" % ", ".join(unknown))
+    selected = [c for c in commands if c.name in wanted]
+    if not selected:
+        raise UsageError("--only selected no command")
+    return selected
+
+
+def parse_go_blocks(text: str) -> List[GoBlock]:
+    blocks, current = [], GoBlock()
+    for line in text.splitlines():
+        ended = GO_BLOCK_END_RE.match(line)
+        covered = GO_COVER_END_RE.match(line)
+        if ended or covered:
+            current.end, current.pkg, current.tail = ended.groups() if ended else ("?",) + covered.groups()
+            build_failed = GO_BUILD_FAILED_RE.search(current.tail)
+            current.build_failed = build_failed.group(0) if build_failed else ""
+            blocks.append(current)
+            current = GoBlock()
+            continue
+        if line.strip() and line.strip() not in ("FAIL", "PASS"):
+            current.content_lines += 1
+        for regex, bucket in ((GO_RUN_RE, current.runs), (GO_FAIL_RE, current.failed)):
+            matched = regex.match(line)
+            if matched:
+                bucket.append(matched.group(1))
+        result = GO_RESULT_RE.match(line)
+        if result:
+            current.results.add(result.group(1))
+    if current.content_lines:
+        blocks.append(current)
+    return blocks
+
+
+def go_lacks_verbose(blocks: List[GoBlock]) -> bool:
+    if not any(block.runs for block in blocks):
+        return True
+    return any(block.needs_run and not block.runs for block in blocks)
+
+
+class Absorber:
+    def __init__(self, rules: List[KnownRule]):
+        self.rules = rules
+        self.budget = [rule.count for rule in rules]
+
+    def absorb(self, item: Failure) -> bool:
+        if not item.absorbable:
+            return False
+        for index, rule in enumerate(self.rules):
+            if rule.pattern.search(item.name) and (self.budget[index] is None or self.budget[index] > 0):
+                if self.budget[index] is not None:
+                    self.budget[index] -= 1
+                return True
+        return False
+
+
+def classify(items: List[Failure], absorber: Absorber) -> Tuple[List[Failure], List[Failure]]:
+    new, known = [], []
+    for item in items:
+        (known if absorber.absorb(item) else new).append(item)
+    return new, known
+
+
+def go_block_failures(block: GoBlock) -> List[Failure]:
+    pending = [n for n in unique(block.runs) if n not in block.results and not n.startswith("Benchmark")]
+    return ([Failure(name) for name in block.failed]
+            + [Failure("%s [no result]" % name, False) for name in pending])
+
+
+def go_package_verdict(block: GoBlock, tests_new: List[Failure], tests_total: int,
+                       absorber: Absorber) -> Tuple[List[Failure], List[Failure]]:
+    if block.build_failed:
+        return [Failure("%s %s" % (block.pkg, block.build_failed), False)], []
+    package = Failure(block.pkg)
+    if tests_total and not tests_new:
+        return ([], [package]) if absorber.absorb(package) else ([package], [])
+    return [Failure("%s [package failed]" % block.pkg, False)], []
+
+
+def go_judge(blocks: List[GoBlock], absorber: Absorber) -> Tuple[List[Failure], List[Failure]]:
+    new, known = [], []
+    for block in blocks:
+        tests = go_block_failures(block)
+        tests_new, tests_known = classify(tests, absorber)
+        new += tests_new
+        known += tests_known
+        if block.end == "FAIL":
+            package_new, package_known = go_package_verdict(block, tests_new, len(tests), absorber)
+            new += package_new
+            known += package_known
+        elif block.end is None:
+            new.append(Failure("%s [no package result]" % (block.runs[-1] if block.runs else "-"), False))
+    return new, known
+
+
+def tsc_failures(text: str) -> List[Failure]:
+    failures = []
+    for line in text.splitlines():
+        located = TSC_LOCATED_RE.match(line)
+        if located:
+            failures.append(Failure("%s:error %s" % located.groups()))
+        elif TSC_ERROR_RE.search(line):
+            failures.append(Failure("%s [unlocated]" % line.strip(), False))
+    return failures
+
+
+def generic_failures(text: str, pattern: re.Pattern) -> List[Failure]:
+    failures = []
+    for line in text.splitlines():
+        match = pattern.search(line)
+        item = (match.group(1) or "").strip() if match else ""
+        if item:
+            failures.append(Failure(item))
+    return failures
+
+
+def completed(command: Command, text: str) -> bool:
+    if command.done_pattern:
+        return bool(command.done_pattern.search(text))
+    if command.kind == "go":
+        return bool(GO_DONE_RE.search(text))
+    return command.kind == "vue-tsc"
+
+
+def judge(command: Command, text: str, go_blocks: List[GoBlock], rules: List[KnownRule]):
+    absorber = Absorber(rules)
+    if command.kind == "go":
+        return go_judge(go_blocks, absorber)
+    items = tsc_failures(text) if command.kind == "vue-tsc" else generic_failures(text, command.fail_pattern)
+    return classify(items, absorber)
+
+
+def run_command(command: Command, repo: Path, out_dir: Path) -> Outcome:
+    log = out_dir / ("%s.log" % command.name)
+    env = dict(os.environ, **command.env)
+    with open(log, "wb") as sink:
+        done = subprocess.run(
+            ["bash", "-o", "pipefail", "-c", command.cmd], cwd=str(repo / command.cwd), env=env,
+            stdin=subprocess.DEVNULL, stdout=sink, stderr=subprocess.STDOUT,
+        )
+    text = log.read_text(encoding="utf-8", errors="replace")
+    outcome = Outcome(command, done.returncode, log)
+    go_blocks = parse_go_blocks(text) if command.kind == "go" else []
+    if command.kind == "go":
+        outcome.skips = unique(GO_SKIP_RE.findall(text))
+        outcome.no_verbose = go_lacks_verbose(go_blocks)
+    if done.returncode != 0:
+        killed = done.returncode < 0 or done.returncode >= 128 or (command.kind == "go" and done.returncode != 1)
+        outcome.new, outcome.known = judge(command, text, go_blocks, [] if killed else command.known_fail)
+        if killed:
+            outcome.unparsed = Unparsed.KILLED
+        elif not outcome.new and not outcome.known:
+            outcome.unparsed = Unparsed.NO_ITEMS
+        elif outcome.known and not completed(command, text):
+            outcome.unparsed = Unparsed.INCOMPLETE
+    return outcome
+
+
+def missing_env(repo: Path, base: str, provided: set) -> List[str]:
+    top = Path(git_output(repo, "rev-parse", "--show-toplevel").strip())
+    changed = git_output(top, "diff", "--name-only", "%s...HEAD" % base).splitlines()
+    lines = []
+    for directory in unique(str(Path(f).parent) for f in changed):
+        names = []
+        for test_file in sorted((top / directory).glob("*_test.go")):
+            names += ENV_NAME_LITERAL_RE.findall(test_file.read_text(encoding="utf-8", errors="replace"))
+        lines += ["MISSING_ENV %s %s" % (name, directory) for name in unique(names) if name not in provided]
+    return lines
+
+
+def report(outcomes: List[Outcome]) -> None:
+    for o in outcomes:
+        name = o.command.name
+        if o.no_verbose:
+            print("NO_VERBOSE %s" % name)
+        for skipped in o.skips:
+            print("SKIP %s %s" % (name, skipped))
+        for item in o.known:
+            print("KNOWN_FAIL %s %s" % (name, item.name))
+        for item in o.new:
+            print("NEW_FAIL %s %s" % (name, item.name))
+        if o.unparsed is Unparsed.NO_ITEMS:
+            print("UNPARSED_FAIL %s %s exit=%d log=%s" % (name, o.unparsed.value, o.exit_code, o.log))
+        elif o.unparsed is Unparsed.KILLED:
+            print("UNPARSED_FAIL %s %s exit=%d" % (name, o.unparsed.value, o.exit_code))
+        elif o.unparsed is Unparsed.INCOMPLETE:
+            print("UNPARSED_FAIL %s %s" % (name, o.unparsed.value))
+    for o in outcomes:
+        print("%s | %d | NEW %d | KNOWN %d | UNPARSED %d | SKIP %d | %s" % (
+            o.command.name, o.exit_code, len(o.new), len(o.known), o.unparsed_count, len(o.skips), o.log))
+    print("RESULT FAIL" if any(o.blocking for o in outcomes) else "RESULT PASS")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="verify-run", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--key")
+    parser.add_argument("--config")
+    parser.add_argument("--only")
+    parser.add_argument("--base")
+    parser.add_argument("--out")
+    return parser
+
+
+def run(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    key = args.key or default_key(repo)
+    configured = load_commands(config_path(args, key))
+    commands = select(configured, args.only)
+    out_dir = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="verify-run-%s-" % key))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if args.base:
+        provided = set(os.environ).union(*(command.env for command in configured))
+        for line in missing_env(repo, args.base, provided):
+            print(line)
+    outcomes = [run_command(command, repo, out_dir) for command in commands]
+    report(outcomes)
+    return 1 if any(o.blocking for o in outcomes) else 0
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    try:
+        return run(args)
+    except UsageError as exc:
+        print("verify-run: %s" % exc, file=sys.stderr)
+    except Exception as exc:
+        print("verify-run: unexpected error: %s: %s" % (type(exc).__name__, exc), file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

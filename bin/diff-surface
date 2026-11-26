@@ -1,0 +1,369 @@
+#!/usr/bin/env python3
+"""diff-surface — 從實際 diff 推出改動面、該派的 reviewer、硬排除命中、bruno-sync 需求與新增註解行。
+
+用法：diff-surface --repo <路徑> --base <ref> [--head <ref>] [--include-worktree] [--json]
+
+  --base              必填，比對基準 ref
+  --head              預設 HEAD；範圍是 git diff <base>...<head>；不能與 --include-worktree 併用
+  --include-worktree  改成比對 merge-base(<base>, HEAD) 與工作目錄（含未 commit 與 untracked 的改動；
+                      不動真正的 index；與預設的三點語意一致，base 分支上 fork 之後的提交不計入）
+  --json              輸出單一 JSON 物件，欄位 surface／categories／reviewers／lane_floor／
+                      reviewer_floor_note／bruno_sync／stat／new_comments
+
+人讀版每段一個 "## 標題"：改動面、命中類別、reviewer、lane 下限、bruno-sync、stat、新增註解行。
+migration、nginx 的判定載入同目錄 gate-evidence 的 sensitive_classes，不在這裡重寫。
+reviewer 段是下限，不是完整清單；JSON 的 reviewer_floor_note 欄位帶同一句提醒。
+
+已知限制：
+  - 路徑關鍵字是子字串比對（payload 會中 pay、author 會中 auth），偏保守。
+  - 內容關鍵字（password 等）只掃非測試檔；測試檔仍照路徑關鍵字判定。
+  - 對本 repo 跑必報認證：原始碼含關鍵字清單，屬預期。
+  - 不偵測不可逆操作與 /mvp 專案。
+  - 路徑含 " 或控制字元時，該檔的新增行不掃描（內容關鍵字與註解都不報）；路徑本身仍判定。
+  - 未 commit 的巢狀 git 目錄會讓 --include-worktree exit 2。
+  - 只掃新增行：刪除授權檢查（檔名不含關鍵字時）偵測不到。
+Exit：0 正常產出；2 git 失敗、ref 不存在、未預期例外。
+"""
+import argparse
+import contextlib
+import fnmatch
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from typing import NamedTuple
+
+FRONTEND_EXT = {".vue", ".ts", ".tsx", ".js", ".jsx", ".css", ".scss", ".less", ".html", ".dart", ".swift"}
+BACKEND_EXT = {".go", ".py", ".java", ".kt", ".rs", ".sql", ".rb", ".php", ".sh"}
+COMMENT_SCAN_EXT = FRONTEND_EXT | BACKEND_EXT | {".yml", ".yaml", ".toml"}
+HASH_COMMENT_EXT = {".py", ".sh", ".rb", ".yml", ".yaml", ".toml"}
+HTML_COMMENT_EXT = {".vue", ".html"}
+MAX_COMMENTS_SHOWN = 50
+
+PAYMENT_PATH_KEYWORDS = ("pay", "payee", "withdraw", "deposit", "wallet", "recharge", "settle",
+                         "rebate", "bonus", "cash", "finance")
+AUTH_PATH_KEYWORDS = ("auth", "login", "logout", "session", "token", "jwt", "oauth", "password",
+                      "totp", "permission", "rbac", "credential", "guard", "acl")
+AUTH_KEY_EXT = {".pem", ".key"}
+AUTH_CONTENT_KEYWORDS = ("password", "secret", "private_key", "api_key")
+TEST_DIR_MARKERS = ("/tests/", "/test/")
+TEST_NAME_PATTERNS = ("*_test.*", "test_*", "*.test.*", "*.spec.*")
+DB_PATH_KEYWORD = "schema"
+DB_PATH_EXCLUDED_EXT = {".md", ".txt"}
+REVIEWER_FLOOR_NOTE = "下限：大腦可依觸發表加派；不偵測：不可逆操作、/mvp 專案"
+GLOBAL_CONFIG_NAMES = ("settings.json", "claude.md", "agents.md", "dockerfile*", "*.dockerfile",
+                       ".gitlab-ci.yml", "docker-compose*.yml", "docker-compose*.yaml",
+                       "compose*.yml", "compose*.yaml")
+PROD_CONFIG_DIR = "config"
+PROD_CONFIG_EXT = {".yml", ".yaml", ".toml", ".json"}
+GLOBAL_CONFIG_DIR_PREFIX = ".github/workflows/"
+BRUNO_PATH_KEYWORDS = ("router", "route", "handler", "controller", "api/", "dto", "endpoint")
+
+CATEGORY_ORDER = ("migration", "nginx", "DB schema", "金流", "認證", "全域配置")
+LANE_FLOOR_CATEGORIES = ("金流", "認證", "migration", "全域配置")
+
+HUNK_HEADER = re.compile(r"^@@ -\S+ \+(\d+)(?:,\d+)? @@")
+DIFF_PREFIXES = ("--src-prefix=a/", "--dst-prefix=b/")
+PATCH_OPTIONS = ("--no-textconv", "--text", "--inter-hunk-context=0", "-U0")
+
+
+class GitError(Exception):
+    pass
+
+
+class AddedLine(NamedTuple):
+    path: str
+    lineno: int
+    text: str
+
+
+def run_git(repo, *args, env=None):
+    return subprocess.run(["git", "-C", repo, "-c", "core.quotePath=false", *args],
+                          capture_output=True, env=env)
+
+
+def fail_if_nonzero(args, proc):
+    if proc.returncode != 0:
+        raise GitError(f"git {' '.join(args)} 失敗：{proc.stderr.decode('utf-8', 'replace').strip()}")
+
+
+def git(repo, *args, env=None):
+    proc = run_git(repo, *args, env=env)
+    fail_if_nonzero(args, proc)
+    return proc.stdout.decode("utf-8", "replace")
+
+
+def load_module_without_bytecode_cache(name, path):
+    sys.dont_write_bytecode = True
+    loader = importlib.machinery.SourceFileLoader(name, path)
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    loader.exec_module(module)
+    return module
+
+
+def load_sensitive_classes():
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "gate-evidence")
+    return load_module_without_bytecode_cache("gate_evidence", path).sensitive_classes
+
+
+def require_commit(repo, ref):
+    args = ("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    proc = run_git(repo, *args)
+    if proc.returncode == 1 and not proc.stderr:
+        raise GitError(f"ref 不存在：{ref}")
+    fail_if_nonzero(args, proc)
+
+
+@contextlib.contextmanager
+def diff_scope(repo, base, head, include_worktree):
+    if not include_worktree:
+        yield [f"{base}...{head}"], None
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": os.path.join(tmp, "index")}
+        fork_point = git(repo, "merge-base", base, "HEAD").strip()
+        git(repo, "read-tree", fork_point, env=env)
+        git(repo, "add", "-A", env=env)
+        yield ["--cached", fork_point], env
+
+
+def read_diff(repo, scope_args, env):
+    base_cmd = ("diff", "--no-color", "--no-ext-diff", "--no-relative", *DIFF_PREFIXES)
+    names = git(repo, *base_cmd, "--no-renames", "--name-only", "-z", *scope_args, env=env)
+    return {
+        "paths": [p for p in names.split("\0") if p],
+        "stat": git(repo, *base_cmd, "--no-renames", "--stat", *scope_args, env=env).rstrip("\n"),
+        "content_patch": git(repo, *base_cmd, "--no-renames", *PATCH_OPTIONS, *scope_args, env=env),
+        "comment_patch": git(repo, *base_cmd, "-M", *PATCH_OPTIONS, *scope_args, env=env),
+    }
+
+
+def parse_added_lines(patch):
+    added = []
+    path = None
+    lineno = 0
+    in_hunk = False
+    for line in patch.split("\n"):
+        if line.startswith("diff --git "):
+            path, in_hunk = None, False
+        elif not in_hunk and line.startswith("+++ "):
+            target = line[4:].rstrip("\t")
+            path = target[2:] if target.startswith("b/") else None
+        elif hunk := HUNK_HEADER.match(line):
+            lineno = int(hunk.group(1))
+            in_hunk = True
+        elif in_hunk and line.startswith("+") and path:
+            added.append(AddedLine(path, lineno, line[1:].rstrip("\r")))
+            lineno += 1
+    return added
+
+
+def extension(path):
+    return os.path.splitext(path)[1].lower()
+
+
+def classify_surface(paths):
+    exts = {extension(p) for p in paths}
+    frontend = bool(exts & FRONTEND_EXT)
+    backend = bool(exts & BACKEND_EXT)
+    if frontend and backend:
+        return "前後端"
+    if frontend:
+        return "前端"
+    if backend:
+        return "後端"
+    return "無程式碼"
+
+
+def path_has_keyword(path, keywords):
+    low = path.lower()
+    return any(k in low for k in keywords)
+
+
+def is_env_file(path):
+    name = os.path.basename(path)
+    return name == ".env" or name.startswith(".env.")
+
+
+def is_prod_config(path):
+    *dirs, name = path.lower().split("/")
+    return PROD_CONFIG_DIR in dirs and "prod" in name and extension(path) in PROD_CONFIG_EXT
+
+
+def is_global_config(path):
+    name = os.path.basename(path).lower()
+    return path.startswith(GLOBAL_CONFIG_DIR_PREFIX) or is_env_file(path) or is_prod_config(path) or \
+        any(fnmatch.fnmatchcase(name, pattern) for pattern in GLOBAL_CONFIG_NAMES)
+
+
+def is_auth_path(path):
+    return path_has_keyword(path, AUTH_PATH_KEYWORDS) or is_env_file(path) or extension(path) in AUTH_KEY_EXT
+
+
+def is_db_path(path):
+    return extension(path) == ".sql" or (DB_PATH_KEYWORD in path.lower() and extension(path) not in DB_PATH_EXCLUDED_EXT)
+
+
+def is_test_path(path):
+    low = "/" + path.lower()
+    name = os.path.basename(low)
+    return any(m in low for m in TEST_DIR_MARKERS) or \
+        any(fnmatch.fnmatchcase(name, pattern) for pattern in TEST_NAME_PATTERNS)
+
+
+def add_hit(hits, category, path, lineno=None):
+    lines = hits.setdefault(category, {}).setdefault(path, [])
+    if lineno is not None and lineno not in lines:
+        lines.append(lineno)
+
+
+def find_categories(paths, content_added, sensitive_classes):
+    hits = {}
+    for path in paths:
+        for category in sorted(sensitive_classes(path)):
+            add_hit(hits, category, path)
+        if is_db_path(path):
+            add_hit(hits, "DB schema", path)
+        if path_has_keyword(path, PAYMENT_PATH_KEYWORDS):
+            add_hit(hits, "金流", path)
+        if is_auth_path(path):
+            add_hit(hits, "認證", path)
+        if is_global_config(path):
+            add_hit(hits, "全域配置", path)
+    for line in content_added:
+        if not is_test_path(line.path) and any(k in line.text.lower() for k in AUTH_CONTENT_KEYWORDS):
+            add_hit(hits, "認證", line.path, line.lineno)
+    return {
+        category: [{"file": path, "lines": sorted(lines)} for path, lines in hits[category].items()]
+        for category in CATEGORY_ORDER if category in hits
+    }
+
+
+def pick_reviewers(categories):
+    reviewers = ["code-reviewer"]
+    if "金流" in categories or "認證" in categories:
+        reviewers.append("security-reviewer")
+    if "migration" in categories or "DB schema" in categories:
+        reviewers.append("db-reviewer")
+    if "nginx" in categories:
+        reviewers.append("code-reviewer 加 nginx 檢查項")
+    return reviewers
+
+
+def lane_floor(categories):
+    hit = [c for c in LANE_FLOOR_CATEGORIES if c in categories]
+    return f"/feature（硬排除：{'、'.join(hit)}）" if hit else "無"
+
+
+def bruno_sync(repo, paths):
+    if not os.path.isdir(os.path.join(repo, "bruno")):
+        return "無 bruno/"
+    return "需要" if any(path_has_keyword(p, BRUNO_PATH_KEYWORDS) for p in paths) else "不需要"
+
+
+def is_comment(path, text):
+    stripped = text.lstrip()
+    ext = extension(path)
+    if stripped.startswith(("//", "/*")):
+        return True
+    if ext in HASH_COMMENT_EXT:
+        return stripped.startswith("#") and not stripped.startswith("#!")
+    if ext in HTML_COMMENT_EXT:
+        return stripped.startswith("<!--")
+    return ext == ".sql" and stripped.startswith("--")
+
+
+def find_new_comments(added):
+    found = [{"file": line.path, "line": line.lineno, "text": line.text.lstrip()}
+             for line in added
+             if extension(line.path) in COMMENT_SCAN_EXT and is_comment(line.path, line.text)]
+    return {"count": len(found), "items": found[:MAX_COMMENTS_SHOWN],
+            "more": max(0, len(found) - MAX_COMMENTS_SHOWN)}
+
+
+def analyze(repo_arg, base, head, include_worktree):
+    repo = git(repo_arg, "rev-parse", "--show-toplevel").strip()
+    require_commit(repo, base)
+    if not include_worktree:
+        require_commit(repo, head)
+    sensitive_classes = load_sensitive_classes()
+    with diff_scope(repo, base, head, include_worktree) as (scope_args, env):
+        diff = read_diff(repo, scope_args, env)
+    paths = diff["paths"]
+    categories = find_categories(paths, parse_added_lines(diff["content_patch"]), sensitive_classes)
+    return {
+        "surface": classify_surface(paths),
+        "categories": categories,
+        "reviewers": pick_reviewers(categories),
+        "reviewer_floor_note": REVIEWER_FLOOR_NOTE,
+        "lane_floor": lane_floor(categories),
+        "bruno_sync": bruno_sync(repo, paths),
+        "stat": diff["stat"],
+        "new_comments": find_new_comments(parse_added_lines(diff["comment_patch"])),
+    }
+
+
+def render_categories(categories):
+    if not categories:
+        return ["無"]
+    rows = []
+    for category, entries in categories.items():
+        rows.append(f"{category}：")
+        for entry in entries:
+            suffix = ":" + ",".join(str(n) for n in entry["lines"]) if entry["lines"] else ""
+            rows.append(f"  - {entry['file']}{suffix}")
+    return rows
+
+
+def render_comments(comments):
+    rows = [f"共 {comments['count']} 行"]
+    rows += [f"{c['file']}:{c['line']} {c['text']}" for c in comments["items"]]
+    if comments["more"]:
+        rows.append(f"另有 {comments['more']} 筆")
+    return rows
+
+
+def render_text(result):
+    sections = [
+        ("改動面", [result["surface"]]),
+        ("命中類別", render_categories(result["categories"])),
+        ("reviewer", result["reviewers"] + [result["reviewer_floor_note"]]),
+        ("lane 下限", [result["lane_floor"]]),
+        ("bruno-sync", [result["bruno_sync"]]),
+        ("stat", [result["stat"] or "（無改動）"]),
+        ("新增註解行", render_comments(result["new_comments"])),
+    ]
+    return "\n".join(f"## {title}\n" + "\n".join(rows) + "\n" for title, rows in sections)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog="diff-surface", description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--base", required=True)
+    parser.add_argument("--head")
+    parser.add_argument("--include-worktree", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    return parser
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.include_worktree and args.head is not None:
+        parser.error("--include-worktree 與 --head 不能併用")
+    try:
+        result = analyze(args.repo, args.base, args.head or "HEAD", args.include_worktree)
+    except Exception as e:
+        print(f"diff-surface 失敗：{type(e).__name__}: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else render_text(result))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

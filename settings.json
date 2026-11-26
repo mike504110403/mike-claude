@@ -106,6 +106,17 @@
         ]
       },
       {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/reviewer_gate.py",
+            "timeout": 10,
+            "statusMessage": "檢查 diff-surface 紀錄…"
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {

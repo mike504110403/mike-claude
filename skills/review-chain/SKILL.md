@@ -65,6 +65,7 @@ reviewer 通過且改動已 commit 後，大腦親跑（證據綁檔案內容，
 
 - diff-surface 命中（含人工加派）的 reviewer **一律同一則訊息一波派完**（多個 Agent 呼叫放同一 block），不逐個等回報；打回修復後重跑全鏈同樣一波派。唯一例外：動用 chrome-devtools MCP 的 agent（僅剩效能診斷）同時僅 1；ui-reviewer 與 /bug 診斷已改 playwright-cli 具名 session、/auto-e2e 是 Playwright 腳本，皆不受此限。
 - reviewer 一律 in-process subagent（/feature「派工紀律」），**報告＝最終回覆**；prompt 必帶回報條款（/brief 的 BRAIN-CHECKLIST）：沒發現問題也要回「審了哪些重點項」。
+- diff-surface 輸出的「新增註解行」非 0 時，把該段原文附進 code-reviewer prompt，請它逐條判斷是否應改設計；超過 50 行時（diff-surface 只列前 50 筆並註明另有 N 筆）請 reviewer 從 diff 自行列出其餘新增註解逐條判斷。
 - **reviewer prompt 必附 `diff --stat` 檔案清單，並明寫「審查以 diff 涉及檔與其直接呼叫端為界，不做全 repo 探索」**——消費者枚舉已由大腦在寫 brief 時做掉（BRAIN-CHECKLIST），review 端重做是冗餘讀檔（opus 價）。
 - reviewer 只讀不改；發現的既有問題照「既有問題不處理」判準，列一行即可。
 - **reviewer prompt 常備一句「不跑任何 router／DB 整合測試、不對測試庫下 SQL」（2026-09-18 N 家族五犯定則）**：工人與大腦的專屬測試庫同時只能有一個 `go test`，reviewer 在工人 worktree 跑 router 測試會撞掉大腦的全套件驗收（52 假紅實證）。reviewer 要 runtime 證據 → 標 PLAUSIBLE 並向大腦要；gofmt／build／vet／純單元包（無 TestMain 的 package）可跑。
@@ -76,6 +77,6 @@ reviewer 通過且改動已 commit 後，大腦親跑（證據綁檔案內容，
 - 任一 reviewer 打回 → 退回修復（重派或直改，依 lane）。修復輪指令紀律：帶測試的 major 一律要求附雙向變異輸出（移除修復→紅）；reviewer 的 MINOR 備註若指向輸入空間缺口或 30 秒可查證的邊界值，當場升級成明確要求，不放行帶病合併。
 - **修復輪跨軸指派**：發給每個 reviewer 的複確認訊息附**全部指派項清單**（標明各項屬哪軸、由誰確認）——只給單軸自己的條目會造成資訊差誤報 scope creep。
 - **重審與複確認一律 SendMessage 原 reviewer 續聊**（帶該 subagent 的 agent id；context 已熱、免全量重讀 repo）；原 reviewer 續聊失敗才開新 agent。
-- **重跑範圍按嚴重度分層（2026-08-20 起）**：修的含 **MAJOR/BLOCKER** → 修完重跑**整條觸發鏈**（修復輪是新錯高發區，退件 log 實證：重構蒸發防護、修復再收 5 MAJOR）；修的**只有 MINOR** → 只重跑打回的那隻確認修復。
-- **Mike 手測的差異重測**：修復含 MAJOR/BLOCKER 且碰前端檔 → 給 Mike「只需重測這幾條路徑」的差異清單＋該 fix 的 `git diff --stat`（檔名讓 Mike 可自行覆核大腦的判斷）；只修 MINOR 或純後端修復 → 不回頭找 Mike，沿用原手測結果。
+- **重跑範圍按嚴重度分層（2026-08-20 起）**：修的含 **MAJOR/BLOCKER** → 修完重跑**整條觸發鏈**（修復輪是新錯高發區，退件 log 實證：重構蒸發防護、修復再收 5 MAJOR）；修的**只有 MINOR** → 只重跑打回的那隻確認修復。修的項目只有註解類（刪除／減量／改寫註解，未動邏輯）時，視同 MINOR 層級：只重跑 code-reviewer、不觸發整鏈重跑、不需 Mike 差異重測。
+- **Mike 手測的差異重測**：修復含 MAJOR/BLOCKER 且碰前端檔 → 給 Mike「只需重測這幾條路徑」的差異清單＋該 fix 的 `git diff --stat`（檔名讓 Mike 可自行覆核大腦的判斷）；只修 MINOR、只修註解類（見上條）或純後端修復 → 不回頭找 Mike，沿用原手測結果。
 - reviewer 全數通過 → 該 implementer **TaskStop** 收掉（派工 lane；reviewer 是 subagent，做完自行結束不需收）；記退件依全域迴饋迴路。

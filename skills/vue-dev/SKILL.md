@@ -17,6 +17,7 @@ description: Vue 前端專案的開發不變式（強制 script setup + TS、只
 6. **UI 框架用該專案既定的那一套**（Element-Plus / Vuetify / Quasar），禁止引入第二套或混用元件庫。
 7. **樣式跟隨所改檔案的既有寫法**（多數專案 SCSS；並存 Tailwind 的專案見其 CLAUDE.md），不跨檔搬風格。
 8. **loading / 錯誤處理 / 資料獲取**遵循全域 `/vue-ui-patterns`；專案級的表單／元件模式 skill（如 `/vue-form-patterns`）在該專案內自動載入，照隨。
+9. **註解政策**：新增或改動的碼預設不寫註解，完整版見 `~/.claude/agents/implementer.md`「寫法」。
 
 ## 驗收最低證據
 

@@ -584,6 +584,8 @@ def main():
     # 強制詢問：nginx / 執行 migration（單純唯讀免問）
     if simple_readonly(cmd):
         sys.exit(0)
+    if re.search(r"\.claude/checks(?![\w.-])", cmd, re.IGNORECASE):
+        respond("ask", "寫入 checks 設定＝新增自動執行入口，需 Mike 確認。")
     if re.search(r"\bnginx\b", cmd, re.IGNORECASE):
         respond("ask", "全域規則：nginx 相關操作需 Mike 確認。")
     if re.search(r"\b(migrate|alembic|flyway|goose)\b", cmd, re.IGNORECASE) or \

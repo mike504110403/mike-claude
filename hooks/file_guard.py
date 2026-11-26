@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""PreToolUse hook（Edit|Write）：只有改到系統 nginx 設定路徑才強制詢問。
-repo 內的 migration、nginx 設定編輯不問——這類改動的把關在實際執行（bash_guard）與 push 閘門（bin/gate-evidence）。"""
+"""PreToolUse hook（Edit|Write）：改到系統 nginx 設定路徑、或寫入 ~/.claude/checks/ 才強制詢問。
+repo 內的 migration、nginx 設定編輯不問——這類改動的把關在實際執行（bash_guard）與 push 閘門（bin/gate-evidence）。
+~/.claude/checks/ 是 write_checks hook 的設定目錄，寫進去等於新增一個每次 Edit／Write 都會自動執行的指令。"""
 import json
 import os
 import re
@@ -32,7 +33,53 @@ def main():
     if path.startswith(prefixes) or "sites-enabled" in path or "sites-available" in path:
         ask("全域規則：系統 nginx 設定的修改需 Mike 確認。")
 
+    if under_checks_dir(data["tool_input"]["file_path"]):
+        ask("寫入 checks 設定＝新增自動執行入口，需 Mike 確認")
+
     sys.exit(0)
+
+
+def checks_roots():
+    roots = [os.path.expanduser("~/.claude/checks")]
+    if os.environ.get("WRITE_CHECKS_DIR"):
+        roots.append(os.path.expanduser(os.environ["WRITE_CHECKS_DIR"]))
+    return [os.path.abspath(root) for root in roots]
+
+
+def existing_ancestors(path):
+    while True:
+        if os.path.exists(path):
+            yield path
+        parent = os.path.dirname(path)
+        if parent == path:
+            return
+        path = parent
+
+
+def same_location(path, root):
+    try:
+        return os.path.samefile(path, root)
+    except OSError:
+        return False
+
+
+def textually_under(path, root):
+    candidates = {os.path.normpath(path).casefold(), os.path.realpath(path).casefold()}
+    bases = {os.path.normpath(root).casefold(), os.path.realpath(root).casefold()}
+    return any(c == b or c.startswith(b + os.sep) for c in candidates for b in bases)
+
+
+def under_checks_dir(raw_path):
+    target = os.path.abspath(os.path.expanduser(raw_path))
+    roots = checks_roots()
+    if any(textually_under(target, root) for root in roots):
+        return True
+    resolved = os.path.realpath(target)
+    if any(textually_under(resolved, root) for root in roots):
+        return True
+    existing_roots = [root for root in roots if os.path.exists(root)]
+    return any(same_location(ancestor, root) for path in (target, resolved)
+               for ancestor in existing_ancestors(path) for root in existing_roots)
 
 
 if __name__ == "__main__":

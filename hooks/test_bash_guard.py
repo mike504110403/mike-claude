@@ -272,6 +272,15 @@ CASES = [
     ("~/.claude/bin/gate-evidence waive --repo . --reason r", "ask"),
     (f"gate-evidence waive --repo . --reason r && {PUSH} origin dev", "ask"),
     ("gate-evidence waive --repo . --reason r; git " + STASH, "deny"),
+    ("echo '{}' > ~/.claude/checks/lottery-platform/write-checks.json", "ask"),
+    ("cp /tmp/w.json /Users/mike/.claude/checks/x/write-checks.json", "ask"),
+    ("mkdir -p ~/.Claude/Checks/x", "ask"),
+    ("python3 -c 'open(\"/Users/mike/.claude/checkſ/x\", \"w\")'", "ask"),
+    ("tee ~/.claude/checks/x/write-checks.json", "ask"),
+    ("cat ~/.claude/checks/lottery-platform/write-checks.json", "allow"),
+    ("ls ~/.claude/checks", "allow"),
+    ("grep -n checks ~/.claude/checks/x/write-checks.json", "allow"),
+    ("mkdir -p ~/.claude/checksum", "allow"),
 ]
 
 
@@ -345,6 +354,9 @@ def main():
         if actual != expected:
             fails += 1
         print(f"{ok} {cmd[:120]!r} => {actual} (expected {expected})")
+
+    decision, reason = decide_with_reason("cp a ~/.claude/checks/x/write-checks.json")
+    fails += check(decision == "ask" and "寫入 checks 設定＝新增自動執行入口" in reason, f"寫 checks 的 ask reason（got {decision}, {reason!r}）")
 
     # rm 接大量 -rr 不得指數回溯：live 版 30 組就跑不完，timeout 當失敗
     cmd = "rm " + "-rr " * 5000 + "x"

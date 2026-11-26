@@ -250,6 +250,58 @@ assert_contains "17 輸出標已上 remote" "$OUT" "已上 remote $ONE_HASH one"
 assert_not_contains "17 不印消失" "$OUT" "消失"
 assert_not_contains "17 不在 remote 新增重複列" "$OUT" "remote 新增 $ONE_HASH"
 
+# ---------- 18. check --src 必須等於快照 local_head ----------
+new_fixture c18
+commit "$A" one
+"$PUSH_PLAN" snapshot --repo "$A" --no-fetch >/dev/null 2>&1
+A_HEAD="$(git -C "$A" rev-parse HEAD)"
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch --src "$A_HEAD" 2>&1)"
+assert_eq "18 src 等於快照 local_head → exit 0" 0 $?
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch --src dev 2>&1)"
+assert_eq "18 src 給分支名、解析後相同 → exit 0" 0 $?
+git -C "$A" branch side HEAD~1
+SIDE_HASH="$(git -C "$A" rev-parse side)"
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch --src side 2>&1)"
+assert_eq "18 src 與快照 local_head 不同 → exit 1" 1 $?
+assert_contains "18 輸出快照 local_head" "$OUT" "$A_HEAD"
+assert_contains "18 輸出本次 src" "$OUT" "$SIDE_HASH"
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch --src no-such-rev 2>&1)"
+assert_eq "18 src 解析失敗 → exit 2" 2 $?
+
+# ---------- 19. check --remote 必須等於快照 remote ----------
+new_fixture c19
+commit "$A" one
+"$PUSH_PLAN" snapshot --repo "$A" --no-fetch >/dev/null 2>&1
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch --remote origin 2>&1)"
+assert_eq "19 remote 相同 → exit 0" 0 $?
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch --remote other 2>&1)"
+assert_eq "19 remote 不同 → exit 1" 1 $?
+assert_contains "19 輸出兩邊 remote" "$OUT" "快照=origin 本次=other"
+
+# ---------- 20. check 一致時印快照的待推 commit 清單 ----------
+new_fixture c20
+commit "$A" first-pending
+commit "$A" second-pending
+"$PUSH_PLAN" snapshot --repo "$A" --no-fetch >/dev/null 2>&1
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch 2>&1)"
+assert_eq "20 一致 exit 0" 0 $?
+assert_contains "20 印出第一顆待推 commit" "$OUT" "$(git -C "$A" log -1 --format='%h %s' HEAD~1)"
+assert_contains "20 印出第二顆待推 commit" "$OUT" "$(git -C "$A" log -1 --format='%h %s' HEAD)"
+
+# ---------- 21. 主旨含 \r、U+2028 時清單仍是一顆一行 ----------
+new_fixture c21
+printf 'x\n' >> "$A/file"
+git -C "$A" add file
+git -C "$A" commit -q -m $'evil\rforged one'
+printf 'y\n' >> "$A/file"
+git -C "$A" add file
+git -C "$A" commit -q -m $'evil forged two'
+"$PUSH_PLAN" snapshot --repo "$A" --no-fetch >/dev/null 2>&1
+OUT="$("$PUSH_PLAN" check --repo "$A" --no-fetch 2>&1)"
+assert_eq "21 一致 exit 0" 0 $?
+assert_contains "21 \\r 留在同一行" "$OUT" "$(git -C "$A" log -1 --format=%h HEAD~1) evil"$'\r'"forged one"
+assert_contains "21 U+2028 留在同一行" "$OUT" "$(git -C "$A" log -1 --format=%h HEAD) evil"$' '"forged two"
+
 # ---------- --help ----------
 OUT="$("$PUSH_PLAN" --help 2>&1)"
 assert_eq "help exit 0" 0 $?

@@ -46,21 +46,22 @@ git worktree add ../<repo名>-wt-<task-slug> -b wt/<需求slug>/<task-slug> feat
    - reset --soft 前先 `git -C <工人worktree> status` 確認沒有未 commit 改動混入。
 2. **在 feature worktree（不是主 checkout）合併**：先 `git -C <feature worktree> branch --show-current` 確認站在 feature 分支 → `git -C <feature worktree> merge wt/<需求slug>/<task-slug>`。
    - 衝突依 /resolving-merge-conflicts 逐塊解；解不掉回報 Mike。
-3. 合併成功後**立即清工人 worktree**，三步一組：`worktree remove` → `branch -d` → `worktree prune`。被擋不 force——先查明未 commit 改動或未合併 commit 是什麼再處置。
+3. 合併成功後**立即清工人 worktree**，三步一組：`worktree remove` → `branch -d`（**在 feature worktree 執行** `git -C <feature worktree> branch -d wt/...`；主 checkout 的 HEAD 是 dev，會判「未合併」而拒刪）→ `worktree prune`。被擋不 force——先查明未 commit 改動或未合併 commit 是什麼再處置。
 
 ## 階段四：壓成一顆 ＋ 合併回 dev ＋ 重驗 ＋ 三清（需求全部驗收＋review 通過後）
 
 1. **需求壓成一顆**（**一個 /feature 落 dev 恆一顆 commit**，2026-08-20 定則）：先 `git -C <feature worktree> status` 確認無未 commit 改動 → `git -C <feature worktree> reset --soft $(git -C <feature worktree> merge-base HEAD dev)` → `git commit`，訊息依下方精簡規則。
 2. dev 自本需求切出以來**前進過**（比對看板「切自 dev hash」）→ `git -C <feature worktree> rebase dev`（衝突依 /resolving-merge-conflicts；feature 未推 remote，rebase 安全）；沒前進 → 跳過。
-3. 在主 checkout：`git -C <主checkout> branch --show-current` 確認是 dev → `git merge feature/<需求slug>`（此時必為 fast-forward；出現 merge commit 代表前兩步沒做對，停下查）。
-4. **合併後重驗**（merge queue 的後半）：dev 前進過的需求 → 在主 checkout 就地重跑本需求改動面的驗收證據（指令同 /verify 第 4 步）。
+3. **合併閘門證據**（repo 有 `~/.claude/checks/<key>/verify.json` 時）：在 feature worktree（已壓成一顆、rebase 完、工作區乾淨）跑 `~/.claude/bin/verify-run --repo <feature worktree> --record`，要 `RESULT PASS` 且印 `RECORDED`。bash_guard 的合併閘門會在 `git merge` 進受保護分支（預設 main／master／dev）時查這筆紀錄，沒有就 deny。
+4. 在主 checkout：`git -C <主checkout> branch --show-current` 確認是 dev → `git merge --ff-only feature/<需求slug>`（必為 fast-forward；不能 ff 代表前兩步沒做對，停下查）。
+5. **合併後重驗**（merge queue 的後半）：dev 前進過的需求 → 在主 checkout 就地重跑本需求改動面的驗收證據（指令同 /verify 第 4 步）。
    - 失敗 → **不刪 feature 分支**，`git revert <該顆 commit>` 或掛待修回報；dev 未 push，可安全回退。
    - dev 沒前進過（單需求串行）→ 本步零成本跳過。
    - **graft 圖重建**（2026-09-08 起，主 checkout 有 `graft/` 才做）：合併後主 checkout 的圖已過期，重驗前先 `graft build --lsp --no-gitignore --no-ignore .`；大腦 session 的 hook 不會碰主 checkout，這裡是唯一更新點。
-5. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
-6. **map delta 更新**（該 repo 在 `~/.claude/maps/` 有 map 才做）：本需求觸及的 map 條目逐條校正（function 改名/搬家/消費者增減），該區塊「最後核對」戳更新為今日＋dev 新 hash；沒觸及任何 map 條目則跳過。
-7. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）、刪本需求 e2e spec 目錄（`~/.claude/e2e/specs/<repo>-<需求slug>/`，若有）。
-8. 停下。push 走 **/push**。
+6. 通過 → `git branch -d feature/<需求slug>` ＋ 清 feature worktree（三步同上）。
+7. **map delta 更新**（該 repo 在 `~/.claude/maps/` 有 map 才做）：本需求觸及的 map 條目逐條校正（function 改名/搬家/消費者增減），該區塊「最後核對」戳更新為今日＋dev 新 hash；沒觸及任何 map 條目則跳過。
+8. **三清**（工程死亡點）：`~/.claude/bin/phase clear`、刪本工程 wip.md（未結裁示與已接受風險先搬 ADR 或 repo CLAUDE.md，否則隨檔死亡）、刪本案 memory 檔及 MEMORY.md 索引行（若有）、刪本需求 e2e spec 目錄（`~/.claude/e2e/specs/<repo>-<需求slug>/`，若有）。
+9. 停下。push 走 **/push**。
 
 ### Commit 訊息精簡規則（dev 上那顆）
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """diff-surface — 從實際 diff 推出改動面、該派的 reviewer、硬排除命中、bruno-sync 需求與新增註解行。
 
-用法：diff-surface --repo <路徑> --base <ref> [--head <ref>] [--include-worktree] [--json]
+用法：diff-surface --repo <路徑> --base <ref> [--head <ref>] [--include-worktree] [--json] [--record]
 
   --base              必填，比對基準 ref
   --head              預設 HEAD；範圍是 git diff <base>...<head>；不能與 --include-worktree 併用
@@ -9,6 +9,17 @@
                       不動真正的 index；與預設的三點語意一致，base 分支上 fork 之後的提交不計入）
   --json              輸出單一 JSON 物件，欄位 surface／categories／reviewers／lane_floor／
                       reviewer_floor_note／bruno_sync／stat／new_comments
+  --record            正常輸出後，把 repo（toplevel realpath）／base／head（被審的 hash）／checkout_head（記錄當下 HEAD 的 hash）／worktree／reviewers／
+                      lane_floor／categories（類別名）／time（UTC，+00:00 形）寫到
+                      ${DIFF_SURFACE_STATE:-~/.claude/state/diff-surface}/<repo 的 sha1 前 12 碼>.json
+                      （同 worktree 覆寫、不同 worktree 並存）；--include-worktree 時 head 記 HEAD 的 hash、
+                      worktree 為 true；unborn HEAD（空樹 base＋--include-worktree 才走得到）head 與 checkout_head 記 null。
+                      寫入是同目錄暫存檔＋os.replace，state 目錄新建時為 0700。最後印 RECORDED <路徑>
+                      （搭配 --json 時印到 stderr，stdout 維持單一 JSON）。
+                      紀錄的讀取與放行契約（有效期、路徑比對、HEAD 綁定）見 hooks/reviewer_gate.py 檔頭。
+
+全 repo 總審（沒有可比對的 base）：--base 給空樹 `git hash-object -t tree /dev/null`，
+  比對對象就是整個 HEAD（或加 --include-worktree 含工作目錄）。
 
 人讀版每段一個 "## 標題"：改動面、命中類別、reviewer、lane 下限、bruno-sync、stat、新增註解行。
 migration、nginx 的判定載入同目錄 gate-evidence 的 sensitive_classes，不在這裡重寫。
@@ -26,7 +37,9 @@ Exit：0 正常產出；2 git 失敗、ref 不存在、未預期例外。
 """
 import argparse
 import contextlib
+import datetime
 import fnmatch
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -54,6 +67,7 @@ TEST_DIR_MARKERS = ("/tests/", "/test/")
 TEST_NAME_PATTERNS = ("*_test.*", "test_*", "*.test.*", "*.spec.*")
 DB_PATH_KEYWORD = "schema"
 DB_PATH_EXCLUDED_EXT = {".md", ".txt"}
+DEFAULT_STATE_DIR = os.path.join("~", ".claude", "state", "diff-surface")
 REVIEWER_FLOOR_NOTE = "下限：大腦可依觸發表加派；不偵測：不可逆操作、/mvp 專案"
 GLOBAL_CONFIG_NAMES = ("settings.json", "claude.md", "agents.md", "dockerfile*", "*.dockerfile",
                        ".gitlab-ci.yml", "docker-compose*.yml", "docker-compose*.yaml",
@@ -72,6 +86,10 @@ PATCH_OPTIONS = ("--no-textconv", "--text", "--inter-hunk-context=0", "-U0")
 
 
 class GitError(Exception):
+    pass
+
+
+class RefMissing(GitError):
     pass
 
 
@@ -110,22 +128,29 @@ def load_sensitive_classes():
     return load_module_without_bytecode_cache("gate_evidence", path).sensitive_classes
 
 
-def require_commit(repo, ref):
-    args = ("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+def resolve(repo, ref, kind):
+    args = ("rev-parse", "--verify", "--quiet", f"{ref}^{{{kind}}}")
     proc = run_git(repo, *args)
     if proc.returncode == 1 and not proc.stderr:
-        raise GitError(f"ref 不存在：{ref}")
+        raise RefMissing(f"ref 不存在：{ref}")
     fail_if_nonzero(args, proc)
+    return proc.stdout.decode().strip()
+
+
+def is_tree(repo, ref):
+    proc = run_git(repo, "cat-file", "-t", ref)
+    return proc.returncode == 0 and proc.stdout.decode().strip() == "tree"
 
 
 @contextlib.contextmanager
 def diff_scope(repo, base, head, include_worktree):
+    base_is_tree = is_tree(repo, base)
     if not include_worktree:
-        yield [f"{base}...{head}"], None
+        yield ([base, head] if base_is_tree else [f"{base}...{head}"]), None
         return
     with tempfile.TemporaryDirectory() as tmp:
         env = {**os.environ, "GIT_INDEX_FILE": os.path.join(tmp, "index")}
-        fork_point = git(repo, "merge-base", base, "HEAD").strip()
+        fork_point = base if base_is_tree else git(repo, "merge-base", base, "HEAD").strip()
         git(repo, "read-tree", fork_point, env=env)
         git(repo, "add", "-A", env=env)
         yield ["--cached", fork_point], env
@@ -285,11 +310,15 @@ def find_new_comments(added):
             "more": max(0, len(found) - MAX_COMMENTS_SHOWN)}
 
 
-def analyze(repo_arg, base, head, include_worktree):
-    repo = git(repo_arg, "rev-parse", "--show-toplevel").strip()
-    require_commit(repo, base)
+def toplevel(repo_arg):
+    return os.path.realpath(git(repo_arg, "rev-parse", "--show-toplevel").strip())
+
+
+def analyze(repo, base, head, include_worktree):
+    if not is_tree(repo, base):
+        resolve(repo, base, "commit")
     if not include_worktree:
-        require_commit(repo, head)
+        resolve(repo, head, "commit")
     sensitive_classes = load_sensitive_classes()
     with diff_scope(repo, base, head, include_worktree) as (scope_args, env):
         diff = read_diff(repo, scope_args, env)
@@ -340,6 +369,44 @@ def render_text(result):
     return "\n".join(f"## {title}\n" + "\n".join(rows) + "\n" for title, rows in sections)
 
 
+def record_path(repo):
+    state_dir = os.path.expanduser(os.environ.get("DIFF_SURFACE_STATE") or DEFAULT_STATE_DIR)
+    return os.path.join(state_dir, hashlib.sha1(repo.encode("utf-8")).hexdigest()[:12] + ".json")
+
+
+def head_hash_or_none(repo, ref):
+    try:
+        return resolve(repo, ref, "commit")
+    except RefMissing:
+        return None
+
+
+def write_record(repo, base, head, include_worktree, result):
+    path = record_path(repo)
+    state_dir = os.path.dirname(path)
+    os.makedirs(state_dir, mode=0o700, exist_ok=True)
+    record = {
+        "repo": repo,
+        "base": base,
+        "head": head_hash_or_none(repo, "HEAD" if include_worktree else head),
+        "checkout_head": head_hash_or_none(repo, "HEAD"),
+        "worktree": include_worktree,
+        "reviewers": result["reviewers"],
+        "lane_floor": result["lane_floor"],
+        "categories": list(result["categories"].keys()),
+        "time": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    }
+    fd, tmp_path = tempfile.mkstemp(dir=state_dir, prefix=".record-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(record, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
+    return path
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="diff-surface", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -348,6 +415,7 @@ def build_parser():
     parser.add_argument("--head")
     parser.add_argument("--include-worktree", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--record", action="store_true")
     return parser
 
 
@@ -356,12 +424,18 @@ def main():
     args = parser.parse_args()
     if args.include_worktree and args.head is not None:
         parser.error("--include-worktree 與 --head 不能併用")
+    head = args.head or "HEAD"
     try:
-        result = analyze(args.repo, args.base, args.head or "HEAD", args.include_worktree)
+        repo = toplevel(args.repo)
+        result = analyze(repo, args.base, head, args.include_worktree)
+        recorded = write_record(repo, args.base, head, args.include_worktree, result) \
+            if args.record else None
     except Exception as e:
         print(f"diff-surface 失敗：{type(e).__name__}: {e}", file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else render_text(result))
+    if recorded:
+        print(f"RECORDED {recorded}", file=sys.stderr if args.json else sys.stdout)
     return 0
 
 

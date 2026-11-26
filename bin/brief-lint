@@ -3,16 +3,31 @@
 
 用法：brief-lint <brief.md> --repo <dir> [--run] [--timeout 秒，預設 120]
 
-輸出三段：[refs]（檔案:行號引用是否存在）、[cmds]（驗收標準 inline code 指令，
---run 才實跑）、[callers]（範圍節內 Name( 呼叫點枚舉），最後一行 summary: problems=<N>。
-[cmds] 判定順序：DENIED → PLACEHOLDER → 白名單 → NOT_RUN／RUN。指令依 && || ; | 切段，
-所有段都命中 ALLOW_RULES（開頭的 cd <路徑> 段視為允許）才可執行；否則印 UNLISTED
-（文字片段或有副作用的指令：不執行、不算 problem，有沒有 --run 都一樣）。
+輸出四段：[refs]（檔案:行號引用是否存在）、[cmds]（驗收標準 inline code 指令，
+--run 才實跑）、[callers]（範圍節內 Name( 呼叫點枚舉）、[scope]（範圍節內路徑是否被
+.gitignore 擋），最後一行 summary: problems=<N>。
+[refs] 引用寫成 路徑:行號「原文片段」時，該行（區間內任一行）去前後空白後須包含片段
+（片段也去前後空白），否則印 SNIPPET_MISMATCH 並算 problem；沒有「」的引用只驗存在與行號範圍。
+[cmds] 驗收標準節（圍欄區塊除外）內每個 inline code 都判定：DENIED → PLACEHOLDER → 白名單 →
+NOT_RUN／RUN。指令依 && || ; | 切段，所有段都命中 ALLOW_RULES（開頭的 cd <路徑> 段視為允許）
+才可執行；否則印 UNLISTED（不執行，有沒有 --run 都一樣）。UNLISTED 只有同時滿足「頂層列點項
+（行首無縮排的 - * N.）的第一個 inline code」與「指令形狀（可執行的首 token 加至少一個
+參數）」才算 problem，其餘（含縮排列點）只印不計。DENIED、PLACEHOLDER 不算 problem。同一行
+「最後一個」inline code 的行尾（或 code 內）寫（不實跑：<理由>）（半形括號亦可、後接 。或空白
+亦可；理由內括號只容許一層巢狀）時，白名單內的印 NOT_RUN_ACK（--run 也不執行）、白名單外
+的印 UNLISTED_ACK，都不算 problem。
+白名單的 bin/<名> --help 只收列舉的 9 支（見 ALLOW_RULES）；新增 bin 工具需同步此清單。
+[scope] 範圍節 inline code 中像路徑的項目（可帶 :行號），對 --repo 跑 git check-ignore；
+被 ignore 則印 IGNORED_PATH 並算 problem。~ 開頭與 repo 外絕對路徑略過，repo 內絕對路徑
+轉相對路徑再查；含 * ? [ 印 SCOPE_GLOB_SKIPPED；check-ignore 回 0／1 以外（例如 --repo
+不是 git 目錄）印 SCOPE_UNCHECKED <路徑> <rc>。這兩種都不算 problem。
+已知限制：「」片段內含「」」時只取到第一個「」」為止；UNLISTED 的計數依賴 shutil.which
+（PATH 不同，指令是否被當成指令、結果可能不同）。
 威脅模型：brief 由大腦撰寫、--repo 是信任的 worktree；本工具防的是 brief 文字「不小心」
 造成寫檔或執行，不防惡意作者；build 類產物（如 go build 預設輸出）落在 worktree 屬可接受。
 ZERO_MATCH 只看「最後一個非 cd 的指令（依 && || ; 切）的管線第一段」是否為 grep／rg／
 git [-C dir] grep；`grep x f | wc -l` 這種管線的 stdout 非空，維持不判 ZERO_MATCH。
-Exit：0 無 problem／1 有 problem／2 參數錯、brief 不存在、--repo 不是目錄。
+Exit：0 無 problem／1 有 problem／2 參數錯、brief 不存在、--repo 不是目錄、其他未預期例外。
 """
 import argparse
 import os
@@ -67,7 +82,7 @@ DENY_SEGMENT_RULES = (
 # 前置環境變數：名稱命中者整條 DENIED（會改變工具行為或載入外部程式碼）；
 # 其餘變數名放行（XXX_TEST_DSN=... go test 是常見寫法）
 DENY_ENV_RE = re.compile(
-    r"GIT_\w*|BASH_ENV|ENV|LD_\w*|DYLD_\w*|PYTHON(?:STARTUP|HOME|INSPECT)|\w*_CONFIG_PATH"
+    r"GIT_\w*|BASH_ENV|ENV|LD_\w*|DYLD_\w*|PYTHON(?:STARTUP|HOME|INSPECT|PATH|USERBASE|WARNINGS)|NODE_PATH|HOME|XDG_\w*|GOENV|GOROOT|GOTOOLCHAIN|\w*_CONFIG_PATH"
     r"|GOFLAGS|MAKEFLAGS|MAKEFILES|CARGO_\w*|RUSTC_WRAPPER|RUSTFLAGS|PAGER|GIT_PAGER|EDITOR|NODE_OPTIONS"
     r"|npm_config_\w*|PYTEST_ADDOPTS|PATH|SHELL|PROMPT_COMMAND|PS4",
     re.I,
@@ -87,10 +102,19 @@ REF_RE = re.compile(
     r"(?<![A-Za-z0-9_.+@/~:-])"
     r"((?:~|/)?[A-Za-z0-9_.+@-]+(?:/+[A-Za-z0-9_.+@-]+)*)"
     r":(\d+)(?:-(\d+))?(?!\d)"
+    r"(?:`?[ \t]*「([^」\n]*)」)?"
 )
+ACK_RE = re.compile(r"[（(]不實跑[：:](?:[^（()）]|[（(][^（()）]*[）)])+[）)][\s。.]*$")
+GLOB_CHARS_RE = re.compile(r"[*?\[]")
+LINE_SUFFIX_RE = re.compile(r":\d+(?:-\d+)?$")
 INLINE_RE = re.compile(r"`([^`\n]+)`")
+TOP_BULLET_RE = re.compile(r"(?:[-*]|\d+\.) ")
 CALL_RE = re.compile(r"((?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*)\(")
 ENV_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+PATH_ARG = r"(?!\S*\.\.)[A-Za-z0-9_./@][A-Za-z0-9_./@:-]*"
+GRAFT_BASE = r"[A-Za-z0-9_./@^][A-Za-z0-9_./@^~:-]*"
+REDIRECT_TAIL = r"(?: 2>&1| 2>/dev/null)*"
 
 # 可執行白名單：指令依 && || ; | 切段後，每段（略過前置 VAR=val）都要命中其中一條
 # （regex 對單段、錨定段首）才會被 --run 執行。其餘一律 UNLISTED。
@@ -107,8 +131,16 @@ ALLOW_RULES = tuple(re.compile(p) for p in (
     r"git (?:-C \S+ )?(?:grep|log|show|diff|status|ls-files|rev-parse)\b",
     # bash 測試腳本由 bash_script_ok() 判定（分段比對，見下）
     r"python3 (?:bin/brief-lint|~/\.claude/bin/brief-lint|/Users/mike/\.claude/bin/brief-lint)(?=\s|$)",
+    r"bin/(?:brief-lint|diff-surface|gate-evidence|push-plan|verify-run|pdf2md|phase|usage-diag|trust-dir) --help$",
+    r"python3 hooks/test_[A-Za-z0-9_]+\.py(?: -v)?$",
+    r"python3 codex/validate\.py$",
     r"(?:wc|head|tail|cat|ls)\b",  # 唯讀小工具
     r"test -[efdsx]\b",  # test 只允許帶檔案旗標
+    rf"\./node_modules/\.bin/vue-tsc --noEmit(?: --skipLibCheck)?(?: -p (?!/){PATH_ARG})?{REDIRECT_TAIL}$",
+    rf"\./node_modules/\.bin/eslint(?: {PATH_ARG}| --max-warnings)*{REDIRECT_TAIL}$",
+    rf"\./node_modules/\.bin/prettier --check(?: {PATH_ARG})*{REDIRECT_TAIL}$",
+    rf"gofmt -l(?: {PATH_ARG})*{REDIRECT_TAIL}$",
+    rf"graft blast(?=.* --no-refresh(?: |$))(?: --base {GRAFT_BASE}| --no-refresh| {PATH_ARG})*{REDIRECT_TAIL}$",
 ))
 CD_SEGMENT_RE = re.compile(r"cd\s+\S+")
 ASSIGN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(?:'[^']*'|\"[^\"]*\"|\S*)\s+")
@@ -123,35 +155,33 @@ def trunc(s, n=MAX_LINE):
     return s if len(s) <= n else s[:n]
 
 
-def strip_fences(lines):
-    """去掉 ``` 圍欄區塊（含圍欄行），回傳剩下的行。"""
-    out, in_fence = [], False
+def section_lines(lines, heading_prefix):
+    """取 '## <heading_prefix>...' 那一節（到下一個 '## ' 為止）；圍欄區塊內的行不收，圍欄內的 '## ' 也不算標題。"""
+    out, inside, in_fence = [], False, False
     for ln in lines:
         if ln.lstrip().startswith("```"):
             in_fence = not in_fence
+        elif in_fence:
             continue
-        if not in_fence:
+        elif ln.startswith("## "):
+            inside = ln.startswith("## " + heading_prefix)
+        elif inside:
             out.append(ln)
     return out
 
 
-def section_lines(lines, heading_prefix):
-    """取 '## <heading_prefix>...' 那一節（到下一個 '## ' 為止），排除圍欄區塊。"""
-    out, inside = [], False
-    for ln in lines:
-        if ln.startswith("## "):
-            inside = ln.startswith("## " + heading_prefix)
-            continue
-        if inside:
-            out.append(ln)
-    return strip_fences(out)
-
-
 def inline_codes(lines):
-    res = []
-    for ln in lines:
-        res.extend(m.group(1).strip() for m in INLINE_RE.finditer(ln))
-    return res
+    return [m.group(1).strip() for ln in lines for m in INLINE_RE.finditer(ln)]
+
+
+def command_candidates(lines):
+    out = []
+    for ln in section_lines(lines, "驗收標準"):
+        is_top_bullet = TOP_BULLET_RE.match(ln) is not None
+        codes = [m.group(1).strip() for m in INLINE_RE.finditer(ln)]
+        for i, code in enumerate(codes):
+            out.append((code, ln, is_top_bullet and i == 0, i == len(codes) - 1))
+    return out
 
 
 # ---------------- refs ----------------
@@ -186,12 +216,13 @@ def check_refs(text, repo):
     seen = set()
     for m in REF_RE.finditer(text):
         path, start, end = m.group(1), int(m.group(2)), m.group(3)
+        snippet = (m.group(4) or "").strip()
         if not looks_like_path(path) or looks_like_host(path, text[max(0, m.start() - 2):m.start()]):
             continue
-        ref = m.group(0)
-        if ref in seen:
+        ref = "%s:%d%s" % (path, start, "-" + end if end else "")
+        if (ref, snippet) in seen:
             continue
-        seen.add(ref)
+        seen.add((ref, snippet))
         if path.startswith("~"):
             full = os.path.expanduser(path)
         elif path.startswith("/"):
@@ -212,18 +243,27 @@ def check_refs(text, repo):
             print("LINE_OUT_OF_RANGE %s (file has %d lines)" % (ref, n))
             problems += 1
             continue
+        if snippet and not any(snippet in ln.strip() for ln in flines[start - 1:top]):
+            print("SNIPPET_MISMATCH %s 「%s」 | 實際：%s" % (ref, snippet, trunc(flines[start - 1].strip())))
+            problems += 1
+            continue
         print("OK %s | %s" % (ref, trunc(flines[start - 1])))
     return problems
 
 
 # ---------------- cmds ----------------
-def first_token(cmd):
+def command_tokens(cmd):
     try:
         toks = shlex.split(cmd)
     except ValueError:
         toks = cmd.split()
     while toks and ENV_ASSIGN_RE.match(toks[0]):
         toks = toks[1:]
+    return toks
+
+
+def first_token(cmd):
+    toks = command_tokens(cmd)
     return toks[0] if toks else ""
 
 
@@ -232,7 +272,7 @@ def is_command(cmd, repo):
     tok = first_token(pairs[0][0]) if pairs else ""
     if not tok:
         return False
-    if cmd.startswith(("bash ", "./", "python3 ")) or tok == "cd":
+    if cmd.startswith(("bash ", "python3 ")) or tok == "cd":
         return True
     if "/" in tok:
         # 帶路徑的 token：相對路徑以 --repo 為根（指令實際就在 repo 下執行）
@@ -250,6 +290,10 @@ def env_names(seg):
             return names
         names.append(m.group(1))
         pos = m.end()
+
+
+def is_command_shaped(cmd):
+    return len(command_tokens(cmd)) >= 2
 
 
 def is_denied(cmd):
@@ -457,7 +501,9 @@ def run_cmd(cmd, repo, timeout):
 def check_cmds(lines, repo, run, timeout):
     problems = 0
     print("[cmds]")
-    for cmd in inline_codes(section_lines(lines, "驗收標準")):
+    for cmd, line, counts, is_last in command_candidates(lines):
+        acked = (is_last and ACK_RE.search(line) is not None) or ACK_RE.search(cmd) is not None
+        cmd = ACK_RE.sub("", cmd).strip()
         if not is_command(cmd, repo):
             continue
         if is_denied(cmd):
@@ -467,7 +513,15 @@ def check_cmds(lines, repo, run, timeout):
             print("PLACEHOLDER %s" % cmd)
             continue
         if not is_allowed(cmd):
-            print("UNLISTED %s" % cmd)
+            if acked:
+                print("UNLISTED_ACK %s" % cmd)
+            else:
+                print("UNLISTED %s" % cmd)
+                if counts and is_command_shaped(cmd):
+                    problems += 1
+            continue
+        if acked:
+            print("NOT_RUN_ACK %s" % cmd)
             continue
         if not run:
             print("NOT_RUN %s" % cmd)
@@ -524,8 +578,49 @@ def check_callers(lines, repo):
             print("  " + trunc(h))
 
 
+# ---------------- scope ----------------
+def scope_path(code, repo):
+    path = LINE_SUFFIX_RE.sub("", code)
+    if re.search(r"\s", path) or path.startswith("~") or ".." in path.split("/") or not looks_like_path(path):
+        return None
+    if path.startswith("/"):
+        prefix = repo.rstrip("/") + "/"
+        return path[len(prefix):] if path.startswith(prefix) else None
+    return path
+
+
+def check_ignore_rc(repo, path):
+    r = subprocess.run(
+        ["git", "-C", repo, "check-ignore", "-q", "--", path],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    return r.returncode
+
+
+def check_scope(lines, repo):
+    problems = 0
+    print("[scope]")
+    paths = []
+    for code in inline_codes(section_lines(lines, "範圍")):
+        path = scope_path(code, repo)
+        if path and path not in paths:
+            paths.append(path)
+    for path in paths:
+        if GLOB_CHARS_RE.search(path):
+            print("SCOPE_GLOB_SKIPPED %s" % path)
+            continue
+        rc = check_ignore_rc(repo, path)
+        if rc == 0:
+            print("IGNORED_PATH %s" % path)
+            problems += 1
+        elif rc != 1:
+            print("SCOPE_UNCHECKED %s %d" % (path, rc))
+    return problems
+
+
 def main():
-    ap = argparse.ArgumentParser(prog="brief-lint", description="機械檢查 brief 的引用、驗收指令與呼叫點")
+    ap = argparse.ArgumentParser(
+        prog="brief-lint", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("brief")
     ap.add_argument("--repo", required=True)
     ap.add_argument("--run", action="store_true")
@@ -547,10 +642,15 @@ def main():
     problems = check_refs(text, repo)
     problems += check_cmds(lines, repo, args.run, args.timeout)
     check_callers(lines, repo)
+    problems += check_scope(lines, repo)
     print("summary: problems=%d" % problems)
     sys.stdout.flush()
     return 1 if problems else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        print("brief-lint: 未預期例外 %s: %s" % (type(e).__name__, e), file=sys.stderr)
+        sys.exit(2)

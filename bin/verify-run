@@ -3,7 +3,8 @@
 
 Usage:
   verify-run --repo <path> [--key <name>] [--config <file>] [--only <name>[,<name>]]
-             [--base <ref>] [--out <dir>]
+             [--base <ref>] [--out <dir>] [--record]
+  verify-run --check-record --repo <path> --ref <branch|hash> [--key <name>] [--config <file>]
 
 Config file (JSON), default ${VERIFY_RUN_CHECKS:-$HOME/.claude/checks}/<key>/verify.json.
 <key> defaults to the main checkout's basename without a leading "." (worktrees resolve to
@@ -68,8 +69,30 @@ The last lines are a result table, one row per command
 "name | exit | NEW n | KNOWN n | UNPARSED n | SKIP n | log", and RESULT PASS or RESULT FAIL.
 
 Exit codes: 0 all commands pass; 1 any command fails; 2 missing/invalid config or unexpected error.
+
+--record: HEAD, HEAD^{tree} and `git status --porcelain --untracked-files=all
+--ignore-submodules=none` of --repo are read before the commands run. A record is written only
+when the run ends RESULT PASS, that status was empty before the run and no file is flagged
+assume-unchanged or skip-worktree (`git ls-files -v`, both before and after), HEAD and its tree are
+unchanged after it, and no tracked file changed during it (`--untracked-files=no`: untracked
+files the commands create, such as logs, do not matter). The record is one JSON line
+{"tree", "head", "branch", "config", "config_sha256", "time"} (the tree and HEAD read before the
+run, current branch or "", absolute config path, sha256 of the config file content, ISO8601 UTC)
+appended to ${VERIFY_RUN_EVIDENCE:-$HOME/.claude/evidence}/<key>/verify-run.jsonl, and the line
+RECORDED <tree> is printed; otherwise NOT_RECORDED <reason>. The exit code is the run's.
+--record always runs the full default config: combining it with --only, --config or --key
+exits 2.
+
+--check-record: run nothing. Print PROTECTED <b1>,<b2>,... (the config's optional
+"protected_branches" list of branch names, default main,master,dev: merges into these need a
+record), then look for a ledger line whose tree equals <ref>^{tree} and whose config and
+config_sha256 equal the config resolved now (path and current content), so a record made with
+another VERIFY_RUN_CHECKS or before the config changed does not count.
+Exit codes: 0 found; 1 not found (or no ledger); 2 error (bad ref, bad config, bad ledger line,
+usage); 3 the repo has no verify config (nothing to enforce, nothing printed).
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -77,11 +100,13 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 KINDS = ("go", "vue-tsc", "generic")
+DEFAULT_PROTECTED_BRANCHES = ("main", "master", "dev")
 NAME_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 DEFAULT_FAIL_PATTERN = r"^\[FAIL\]\s*(.*)"
 ENV_NAME_LITERAL_RE = re.compile(r'"([A-Z0-9_]+_(?:DSN|URL|ADDR))"')
@@ -190,6 +215,79 @@ def config_path(args: argparse.Namespace, key: str) -> Path:
     return Path(root) / key / "verify.json"
 
 
+def ledger_path(key: str) -> Path:
+    root = os.environ.get("VERIFY_RUN_EVIDENCE") or os.path.join(os.path.expanduser("~"), ".claude", "evidence")
+    return Path(root) / key / "verify-run.jsonl"
+
+
+@dataclass(frozen=True)
+class TreeState:
+    tree: str
+    head: str
+    branch: str
+
+
+def tree_state(repo: Path) -> TreeState:
+    return TreeState(
+        tree=git_output(repo, "rev-parse", "HEAD^{tree}").strip(),
+        head=git_output(repo, "rev-parse", "HEAD").strip(),
+        branch=git_output(repo, "branch", "--show-current").strip(),
+    )
+
+
+def hides_changes(repo: Path) -> bool:
+    """`git ls-files -v`：小寫標籤是 assume-unchanged、S 是 skip-worktree，git status 看不到這些檔的改動。"""
+    tags = [line[:1] for line in git_output(repo, "ls-files", "-v").splitlines()]
+    return any(tag == "S" or tag.islower() for tag in tags)
+
+
+def worktree_dirty(repo: Path, untracked: str) -> bool:
+    status = git_output(repo, "status", "--porcelain", "--untracked-files=%s" % untracked, "--ignore-submodules=none")
+    return bool(status.strip()) or hides_changes(repo)
+
+
+def unrecordable_reason(passed: bool, dirty_before: bool, tracked_changed: bool,
+                        before: TreeState, after: TreeState) -> Optional[str]:
+    if not passed:
+        return "result is not PASS"
+    if dirty_before:
+        return "worktree had uncommitted changes before the run"
+    if (before.tree, before.head) != (after.tree, after.head):
+        return "HEAD moved during the run"
+    if tracked_changed:
+        return "tracked files changed during the run"
+    return None
+
+
+def config_digest(config: Path) -> str:
+    return hashlib.sha256(config.read_bytes()).hexdigest()
+
+
+def append_record(key: str, state: TreeState, config: Path) -> None:
+    path = ledger_path(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {"tree": state.tree, "head": state.head, "branch": state.branch, "config": str(config.resolve()),
+           "config_sha256": config_digest(config), "time": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    with open(path, "a", encoding="utf-8") as sink:
+        sink.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def recorded_trees(key: str, config: Path) -> set:
+    path = ledger_path(key)
+    if not path.is_file():
+        return set()
+    wanted = (str(config.resolve()), config_digest(config))
+    trees = set()
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        try:
+            row = json.loads(line)
+            if (row.get("config"), row.get("config_sha256")) == wanted:
+                trees.add(row["tree"])
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
+            raise UsageError("bad ledger line %d in %s: %s" % (number, path, exc))
+    return trees
+
+
 def compile_regex(source: object, where: str, flags: int = 0) -> re.Pattern:
     if not isinstance(source, str):
         raise UsageError("%s: regex must be a string, got %r" % (where, source))
@@ -246,7 +344,20 @@ def parse_command(raw: object) -> Command:
                    parse_fail_pattern(raw, kind, where), parse_done_pattern(raw, where))
 
 
-def load_commands(path: Path) -> List[Command]:
+@dataclass
+class Config:
+    commands: List[Command]
+    protected_branches: List[str]
+
+
+def parse_protected_branches(data: dict, path: Path) -> List[str]:
+    branches = data.get("protected_branches", list(DEFAULT_PROTECTED_BRANCHES))
+    if not isinstance(branches, list) or not all(isinstance(b, str) and b for b in branches):
+        raise UsageError("%s: protected_branches must be a list of non-empty strings" % path)
+    return branches
+
+
+def load_config(path: Path) -> Config:
     if not path.is_file():
         raise UsageError("config not found: %s" % path)
     try:
@@ -261,7 +372,7 @@ def load_commands(path: Path) -> List[Command]:
     names = [c.name for c in commands]
     if len(set(names)) != len(names):
         raise UsageError("duplicate command names in %s" % path)
-    return commands
+    return Config(commands, parse_protected_branches(data, path))
 
 
 def select(commands: List[Command], only: Optional[str]) -> List[Command]:
@@ -471,13 +582,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--only")
     parser.add_argument("--base")
     parser.add_argument("--out")
+    parser.add_argument("--record", action="store_true")
+    parser.add_argument("--check-record", action="store_true")
+    parser.add_argument("--ref")
     return parser
+
+
+def validate_mode(args: argparse.Namespace) -> None:
+    if args.check_record and (args.record or args.ref is None):
+        raise UsageError("--check-record needs --ref and cannot be combined with --record")
+    if args.ref is not None and args.ref.startswith("-"):
+        raise UsageError("--ref must not start with '-': %r" % args.ref)
+    if not args.check_record and args.ref is not None:
+        raise UsageError("--ref is only valid with --check-record")
+    if args.record and (args.only is not None or args.config is not None or args.key is not None):
+        raise UsageError("--record runs the full default config: it cannot be combined with --only, --config or --key")
 
 
 def run(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     key = args.key or default_key(repo)
-    configured = load_commands(config_path(args, key))
+    config = config_path(args, key)
+    configured = load_config(config).commands
     commands = select(configured, args.only)
     out_dir = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="verify-run-%s-" % key))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -485,15 +611,37 @@ def run(args: argparse.Namespace) -> int:
         provided = set(os.environ).union(*(command.env for command in configured))
         for line in missing_env(repo, args.base, provided):
             print(line)
+    before = tree_state(repo) if args.record else None
+    dirty_before = worktree_dirty(repo, "all") if args.record else False
     outcomes = [run_command(command, repo, out_dir) for command in commands]
     report(outcomes)
-    return 1 if any(o.blocking for o in outcomes) else 0
+    passed = not any(o.blocking for o in outcomes)
+    if args.record:
+        reason = unrecordable_reason(passed, dirty_before, worktree_dirty(repo, "no"), before, tree_state(repo))
+        if reason:
+            print("NOT_RECORDED %s" % reason)
+        else:
+            append_record(key, before, config)
+            print("RECORDED %s" % before.tree)
+    return 0 if passed else 1
+
+
+def check_record(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    key = args.key or default_key(repo)
+    config = config_path(args, key)
+    if not config.is_file():
+        return 3
+    print("PROTECTED %s" % ",".join(load_config(config).protected_branches))
+    tree = git_output(repo, "rev-parse", "--verify", "%s^{tree}" % args.ref).strip()
+    return 0 if tree in recorded_trees(key, config) else 1
 
 
 def main() -> int:
     args = build_parser().parse_args()
     try:
-        return run(args)
+        validate_mode(args)
+        return check_record(args) if args.check_record else run(args)
     except UsageError as exc:
         print("verify-run: %s" % exc, file=sys.stderr)
     except Exception as exc:

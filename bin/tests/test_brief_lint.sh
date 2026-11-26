@@ -3,6 +3,7 @@
 # 腳本路徑由 BRIEF_LINT 決定（預設 ../brief-lint），讓 dogfood 能指向副本。
 # 純 bash + coreutils + git + python3，各案共用一個 mktemp -d 的 fixture git repo。
 set -u
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
 BRIEF_LINT="${BRIEF_LINT:-$(cd "$(dirname "$0")/.." && pwd)/brief-lint}"
 
@@ -331,8 +332,8 @@ assert_line "allow: 2>&1 允許" "$OUT" "RUN exit=0 grep foo b.txt 2>&1"
 assert_line "allow: 2>/dev/null 允許" "$OUT" "RUN exit=0 grep foo b.txt 2>/dev/null"
 assert_line "allow: 引號內的 | 不切段" "$OUT" "RUN exit=0 grep -E 'foo|bar' b.txt"
 assert_line "allow: 非開頭的 cd 段不允許" "$OUT" "UNLISTED grep foo b.txt && cd sub"
-assert_contains "allow: UNLISTED 不算 problem" "$OUT" "summary: problems=0"
-assert_eq "allow: exit 0" 0 "$RC"
+assert_contains "allow: 九條 UNLISTED 中七條指令形狀計 problem（id、sed 單 token 不計）" "$OUT" "summary: problems=7"
+assert_eq "allow: exit 1" 1 "$RC"
 
 lint "$TMP/cmds_allow.md" --repo "$REPO"
 assert_line "allow: 無 --run 白名單外仍 UNLISTED" "$OUT" "UNLISTED touch m1"
@@ -348,7 +349,7 @@ ALLOWED_CMDS=(
   'bash tests/test_a.sh' 'bash tests/x/test_b.sh' 'python3 bin/brief-lint x.md'
   'wc -l b.txt' 'head b.txt' 'tail b.txt' 'cat b.txt' 'ls' 'test -f b.txt' 'test -d sub'
   'FOO=1 grep foo b.txt'
-  'PYTHONPATH=x pytest -q' 'make test && git -C . log -1' 'make test | grep -C 2 x' 'grep -o foo b.txt' 'rg -o foo' 'ls -O'
+  'FOO_TEST_DSN=x pytest -q' 'make test && git -C . log -1' 'make test | grep -C 2 x' 'grep -o foo b.txt' 'rg -o foo' 'ls -O'
 )
 NOT_ALLOWED_CMDS=(
   'go run main.go' 'npm install' 'pnpm run dev' 'make all' 'test -z x' 'git branch' 'git fetch'
@@ -517,7 +518,7 @@ mkbrief callers <<'EOF'
 ## 範圍
 - 改 `NewFoo(` 與 `pkg.NewFoo(` 的簽名；`zzzMissing(` 無人呼叫
 ## 驗收標準
-- `echo NoCallerHere(`
+- `echo NoCallerHere(` （不實跑：只驗範圍節外不枚舉）
 ## 其他
 - `OtherFunc(` 不在範圍節
 EOF
@@ -551,6 +552,574 @@ echo
 lint "$TMP/cmds_ansi.md" --repo "$REPO" --run
 assert_contains "ansi: \$' 指令 UNLISTED" "$OUT" "UNLISTED grep \$'"
 assert_eq "ansi: 沒有執行" "no" "$(exists "$REPO/ansi_new")"
+
+# ---------- refs: 錨點原文比對 ----------
+mkbrief snip_ok <<'EOF'
+# t
+相符 `src/foo.go:3「func NewFoo()」` 與無反引號 src/foo.go:4「return 1」。
+EOF
+lint "$TMP/snip_ok.md" --repo "$REPO"
+assert_contains "snippet: 相符印 OK 行" "$OUT" "OK src/foo.go:3 | func NewFoo() int {"
+assert_not_contains "snippet: 相符不報 SNIPPET_MISMATCH" "$OUT" "SNIPPET_MISMATCH"
+assert_contains "snippet: 相符 problems=0" "$OUT" "summary: problems=0"
+assert_eq "snippet: 相符 exit 0" 0 "$RC"
+
+mkbrief snip_bad <<'EOF'
+# t
+不符 `src/foo.go:3「func Other」`。
+EOF
+lint "$TMP/snip_bad.md" --repo "$REPO"
+assert_line "snippet: 不符印 SNIPPET_MISMATCH 與實際行" "$OUT" "SNIPPET_MISMATCH src/foo.go:3 「func Other」 | 實際：func NewFoo() int {"
+assert_not_contains "snippet: 不符不印 OK 行" "$OUT" "OK src/foo.go:3"
+assert_contains "snippet: 不符 problems=1" "$OUT" "summary: problems=1"
+assert_eq "snippet: 不符 exit 1" 1 "$RC"
+
+mkbrief snip_range <<'EOF'
+# t
+區間第二行相符 src/foo.go:3-4「return 1」，區間內都不符 src/foo.go:3-4「nothere」。
+EOF
+lint "$TMP/snip_range.md" --repo "$REPO"
+assert_contains "snippet: 區間第二行相符 OK" "$OUT" "OK src/foo.go:3-4 | func NewFoo() int {"
+assert_line "snippet: 區間都不符 MISMATCH" "$OUT" "SNIPPET_MISMATCH src/foo.go:3-4 「nothere」 | 實際：func NewFoo() int {"
+assert_contains "snippet: 區間 problems=1" "$OUT" "summary: problems=1"
+
+mkbrief snip_space <<'EOF'
+# t
+片段空白 src/foo.go:4「  return 1  」，行首有 tab 的行 src/foo.go:4「return 1」。
+EOF
+lint "$TMP/snip_space.md" --repo "$REPO"
+assert_not_contains "snippet: 前後空白差異不影響" "$OUT" "SNIPPET_MISMATCH"
+assert_contains "snippet: 空白差異 problems=0" "$OUT" "summary: problems=0"
+
+mkbrief snip_nofile <<'EOF'
+# t
+缺檔 nofile/x.go:1「abc」 與越界 src/foo.go:99「abc」。
+EOF
+lint "$TMP/snip_nofile.md" --repo "$REPO"
+assert_contains "snippet: 缺檔仍 MISSING_FILE" "$OUT" "MISSING_FILE nofile/x.go:1"
+assert_contains "snippet: 越界仍 LINE_OUT_OF_RANGE" "$OUT" "LINE_OUT_OF_RANGE src/foo.go:99"
+assert_not_contains "snippet: 缺檔／越界不比片段" "$OUT" "SNIPPET_MISMATCH"
+
+# ---------- cmds: UNLISTED 判紅 ----------
+mkbrief unl_red <<'EOF'
+# t
+## 驗收標準
+- `touch m1`
+EOF
+lint "$TMP/unl_red.md" --repo "$REPO"
+assert_line "unlisted: 狀態字樣不變" "$OUT" "UNLISTED touch m1"
+assert_contains "unlisted: problems=1" "$OUT" "summary: problems=1"
+assert_eq "unlisted: exit 1" 1 "$RC"
+lint "$TMP/unl_red.md" --repo "$REPO" --run
+assert_contains "unlisted: --run 同樣 problems=1" "$OUT" "summary: problems=1"
+assert_eq "unlisted: --run 沒執行" "no" "$(exists "$REPO/m1")"
+
+mkbrief unl_ack <<'EOF'
+# t
+## 驗收標準
+- `touch m1` （不實跑：有副作用）
+- `touch m2`
+EOF
+lint "$TMP/unl_ack.md" --repo "$REPO"
+assert_line "unlisted: 行尾不實跑 → UNLISTED_ACK" "$OUT" "UNLISTED_ACK touch m1"
+assert_line "unlisted: 沒標記的同批仍 UNLISTED" "$OUT" "UNLISTED touch m2"
+assert_contains "unlisted: ACK 不計、另一條計 problems=1" "$OUT" "summary: problems=1"
+
+mkbrief unl_ack_only <<'EOF'
+# t
+## 驗收標準
+- `touch m1` （不實跑：有副作用）
+EOF
+lint "$TMP/unl_ack_only.md" --repo "$REPO"
+assert_contains "unlisted: 只有 ACK problems=0" "$OUT" "summary: problems=0"
+assert_eq "unlisted: 只有 ACK exit 0" 0 "$RC"
+
+mkbrief unl_denied_ph <<'EOF'
+# t
+## 驗收標準
+- `rm marker`
+- `cat <wt> > marker_ph`
+EOF
+lint "$TMP/unl_denied_ph.md" --repo "$REPO"
+assert_line "unlisted: DENIED 照印" "$OUT" "DENIED rm marker"
+assert_line "unlisted: PLACEHOLDER 照印" "$OUT" "PLACEHOLDER cat <wt> > marker_ph"
+assert_contains "unlisted: DENIED／PLACEHOLDER 不計 problems=0" "$OUT" "summary: problems=0"
+assert_eq "unlisted: DENIED／PLACEHOLDER exit 0" 0 "$RC"
+
+# ---------- scope: 範圍新檔被 .gitignore 擋 ----------
+IGN="$TMP/repo_ign"
+mkdir -p "$IGN/src"
+printf 'checks/\n*.secret\n' > "$IGN/.gitignore"
+printf 'x\n' > "$IGN/src/keep.go"
+(cd "$IGN" && git init -q && git config user.email t@example.com && git config user.name t \
+  && git add .gitignore src && git commit -q -m init) >/dev/null 2>&1
+
+mkbrief scope_ign <<'EOF'
+# t
+## 範圍
+- 新增 `checks/x/verify.json` 與 `src/new_file.go`，另有 `a/b.secret`、`NewFoo(` 與 `bin/tool --flag`
+## 驗收標準
+- `checks/y/other.json` 只是驗收節的 inline code
+EOF
+lint "$TMP/scope_ign.md" --repo "$IGN"
+assert_line "scope: ignore 目錄下的新檔 IGNORED_PATH" "$OUT" "IGNORED_PATH checks/x/verify.json"
+assert_line "scope: ignore 萬用字元 IGNORED_PATH" "$OUT" "IGNORED_PATH a/b.secret"
+assert_not_contains "scope: 未被 ignore 的新檔不報" "$OUT" "IGNORED_PATH src/new_file.go"
+assert_not_contains "scope: 驗收節的路徑不檢查" "$OUT" "IGNORED_PATH checks/y/other.json"
+assert_not_contains "scope: 非路徑項目不檢查" "$OUT" "IGNORED_PATH NewFoo("
+assert_count "scope: 只報兩條" "$OUT" "IGNORED_PATH" 2
+assert_contains "scope: problems=2" "$OUT" "summary: problems=2"
+assert_eq "scope: exit 1" 1 "$RC"
+
+mkbrief scope_clean <<'EOF'
+# t
+## 範圍
+- 只動 `src/new_file.go` 與 `src/keep.go:1`
+EOF
+lint "$TMP/scope_clean.md" --repo "$IGN"
+assert_not_contains "scope: 乾淨範圍不報" "$OUT" "IGNORED_PATH"
+assert_contains "scope: 乾淨 problems=0" "$OUT" "summary: problems=0"
+assert_eq "scope: 乾淨 exit 0" 0 "$RC"
+
+mkbrief scope_lineno <<'EOF'
+# t
+## 範圍
+- `checks/z.json:3`
+EOF
+lint "$TMP/scope_lineno.md" --repo "$IGN"
+assert_line "scope: 帶行號的路徑也檢查" "$OUT" "IGNORED_PATH checks/z.json"
+
+# ---------- M2/M3: 錨點變體 ----------
+mkbrief snip_tick <<'EOF'
+# t
+反引號後接片段 `src/foo.go:3`「func NewFoo」，夾空白 `src/foo.go:4` 「return 1」。
+EOF
+lint "$TMP/snip_tick.md" --repo "$REPO"
+assert_contains "snippet: `p:n`「x」 相符 OK" "$OUT" "OK src/foo.go:3 | func NewFoo() int {"
+assert_contains "snippet: `p:n` 「x」 夾空白相符 OK" "$OUT" "OK src/foo.go:4 | "
+assert_not_contains "snippet: 反引號變體相符不報" "$OUT" "SNIPPET_MISMATCH"
+
+mkbrief snip_tick_bad <<'EOF'
+# t
+反引號後不符 `src/foo.go:3`「func Other」，夾空白不符 `src/foo.go:4` 「nothere」。
+EOF
+lint "$TMP/snip_tick_bad.md" --repo "$REPO"
+assert_line "snippet: `p:n`「x」 不符 MISMATCH" "$OUT" "SNIPPET_MISMATCH src/foo.go:3 「func Other」 | 實際：func NewFoo() int {"
+assert_line "snippet: `p:n` 「x」 夾空白不符 MISMATCH" "$OUT" "SNIPPET_MISMATCH src/foo.go:4 「nothere」 | 實際：return 1"
+assert_contains "snippet: 反引號變體 problems=2" "$OUT" "summary: problems=2"
+
+mkbrief snip_otherline <<'EOF'
+# t
+片段在檔內他行 src/foo.go:3「return 1」。
+EOF
+lint "$TMP/snip_otherline.md" --repo "$REPO"
+assert_line "snippet: 片段在他行不在引用行 → MISMATCH" "$OUT" "SNIPPET_MISMATCH src/foo.go:3 「return 1」 | 實際：func NewFoo() int {"
+assert_contains "snippet: 他行 problems=1" "$OUT" "summary: problems=1"
+
+mkbrief snip_afterplain <<'EOF'
+# t
+先無片段 src/foo.go:3 後有片段 src/foo.go:3「nothere」。
+EOF
+lint "$TMP/snip_afterplain.md" --repo "$REPO"
+assert_contains "snippet: 同 p:n 先無片段 OK" "$OUT" "OK src/foo.go:3 | func NewFoo() int {"
+assert_line "snippet: 同 p:n 後有片段仍比對" "$OUT" "SNIPPET_MISMATCH src/foo.go:3 「nothere」 | 實際：func NewFoo() int {"
+
+# ---------- UNLISTED: 指令形狀與節範圍 ----------
+mkbrief unl_single <<'EOF'
+# t
+## 驗收標準
+- `id`
+- `sed`
+- `FOO=1 id`
+EOF
+lint "$TMP/unl_single.md" --repo "$REPO"
+assert_line "unlisted: 單 token 仍印 UNLISTED" "$OUT" "UNLISTED id"
+assert_line "unlisted: 前置變數後單 token 仍印" "$OUT" "UNLISTED FOO=1 id"
+assert_contains "unlisted: 單 token 不計 problems=0" "$OUT" "summary: problems=0"
+assert_eq "unlisted: 單 token exit 0" 0 "$RC"
+
+mkbrief unl_othersec <<'EOF'
+# t
+## 範圍
+- 提到 `touch m9`
+## 其他
+- 提到 `touch m8`
+## 驗收標準
+- `grep foo b.txt`
+EOF
+lint "$TMP/unl_othersec.md" --repo "$REPO"
+assert_not_contains "unlisted: 其他節不掃描" "$OUT" "UNLISTED"
+assert_contains "unlisted: 其他節 problems=0" "$OUT" "summary: problems=0"
+
+mkbrief unl_ack_var <<'EOF'
+# t
+## 驗收標準
+- `touch m1` （不實跑：全形加句號）。
+- `touch m2` （不實跑：行尾空白）   
+- `touch m3` (不實跑:半形括號)
+- `touch m4` (不實跑：半形括號加句點).
+- `touch m5` （不實跑：後面還有字） 後面還有字
+EOF
+lint "$TMP/unl_ack_var.md" --repo "$REPO"
+assert_line "ack: 全形後接句號" "$OUT" "UNLISTED_ACK touch m1"
+assert_line "ack: 行尾空白" "$OUT" "UNLISTED_ACK touch m2"
+assert_line "ack: 半形括號與冒號" "$OUT" "UNLISTED_ACK touch m3"
+assert_line "ack: 半形括號加句點" "$OUT" "UNLISTED_ACK touch m4"
+assert_line "ack: 不在行尾不認" "$OUT" "UNLISTED touch m5"
+assert_contains "ack: 只有一條計 problems=1" "$OUT" "summary: problems=1"
+
+# ---------- 白名單: repo 內唯讀／測試入口 ----------
+mkdir -p "$REPO/hooks" "$REPO/codex"
+for t in tool brief-lint diff-surface gate-evidence push-plan verify-run pdf2md phase usage-diag trust-dir cmux-pet-notify.sh lint-rules; do
+  printf 'echo toolhelp "$@"\n' > "$REPO/bin/$t"; chmod +x "$REPO/bin/$t"
+done
+printf 'echo mutate_ran\n' > "$REPO/bin/mutate"; chmod +x "$REPO/bin/mutate"
+printf 'print("hookok")\n' > "$REPO/hooks/test_a.py"
+printf 'print("validok")\n' > "$REPO/codex/validate.py"
+mkbrief allow_new <<'EOF'
+# t
+## 驗收標準
+- `bin/brief-lint --help`
+- `bin/brief-lint --other`
+- `bin/brief-lint --help --x`
+- `bin/mutate --help`
+- `python3 hooks/test_a.py`
+- `python3 hooks/test_a.py -v`
+- `python3 hooks/test_a.py --evil`
+- `python3 ../hooks/test_a.py`
+- `python3 hooks/other.py`
+- `python3 codex/validate.py`
+- `python3 codex/validate.py extra`
+- `python3 codex/validate.py --fix`
+EOF
+lint "$TMP/allow_new.md" --repo "$REPO" --run
+assert_line "allow: 列舉的 bin/<名> --help 執行" "$OUT" "RUN exit=0 bin/brief-lint --help"
+assert_line "allow: 列舉的 bin/<名> 其他旗標 UNLISTED" "$OUT" "UNLISTED bin/brief-lint --other"
+assert_line "allow: 列舉的 bin/<名> --help 後帶額外旗標 UNLISTED" "$OUT" "UNLISTED bin/brief-lint --help --x"
+assert_line "allow: bin/mutate --help 仍 DENIED" "$OUT" "DENIED bin/mutate --help"
+assert_line "allow: hooks/test_*.py 執行" "$OUT" "RUN exit=0 python3 hooks/test_a.py"
+assert_line "allow: hooks/test_*.py -v 執行" "$OUT" "RUN exit=0 python3 hooks/test_a.py -v"
+assert_line "allow: hooks/test_*.py 其他旗標 UNLISTED" "$OUT" "UNLISTED python3 hooks/test_a.py --evil"
+assert_line "allow: hooks 路徑含 .. UNLISTED" "$OUT" "UNLISTED python3 ../hooks/test_a.py"
+assert_line "allow: hooks 非 test_ 前綴 UNLISTED" "$OUT" "UNLISTED python3 hooks/other.py"
+assert_line "allow: codex/validate.py 執行" "$OUT" "RUN exit=0 python3 codex/validate.py"
+assert_line "allow: codex/validate.py 帶引數 UNLISTED" "$OUT" "UNLISTED python3 codex/validate.py extra"
+assert_line "allow: codex/validate.py --fix 仍 DENIED" "$OUT" "DENIED python3 codex/validate.py --fix"
+assert_contains "allow: 新白名單 problems=6（六條 UNLISTED 指令形狀）" "$OUT" "summary: problems=6"
+
+mkbrief allow_bin_enum <<'EOF'
+# t
+## 驗收標準
+- `bin/diff-surface --help`
+- `bin/gate-evidence --help`
+- `bin/push-plan --help`
+- `bin/verify-run --help`
+- `bin/pdf2md --help`
+- `bin/phase --help`
+- `bin/usage-diag --help`
+- `bin/trust-dir --help`
+- `bin/tool --help`
+- `bin/cmux-pet-notify.sh --help`
+- `bin/lint-rules --help`
+EOF
+lint "$TMP/allow_bin_enum.md" --repo "$REPO"
+for t in diff-surface gate-evidence push-plan verify-run pdf2md phase usage-diag trust-dir; do
+  assert_line "allow: 列舉 bin/$t --help" "$OUT" "NOT_RUN bin/$t --help"
+done
+assert_line "allow: 未列舉 bin/tool --help UNLISTED" "$OUT" "UNLISTED bin/tool --help"
+assert_line "allow: bin/cmux-pet-notify.sh --help UNLISTED" "$OUT" "UNLISTED bin/cmux-pet-notify.sh --help"
+assert_line "allow: bin/lint-rules --help UNLISTED" "$OUT" "UNLISTED bin/lint-rules --help"
+assert_contains "allow: 未列舉三條計 problems=3" "$OUT" "summary: problems=3"
+
+mkbrief allow_unittest <<'EOF'
+# t
+## 驗收標準
+- `python3 -m unittest discover -s codex/tests`
+EOF
+lint "$TMP/allow_unittest.md" --repo "$REPO"
+assert_line "allow: unittest discover -s <目錄> 在白名單內（NOT_RUN）" "$OUT" "NOT_RUN python3 -m unittest discover -s codex/tests"
+
+# ---------- 驗收標準: 候選範圍與 problem 計法 ----------
+mkbrief cand_pos <<'EOF'
+# t
+## 驗收標準
+- `grep foo b.txt` exit 0，用 `mktemp -d` 的真 git repo，再看 `touch m_second`
+句中提到 `touch m_prose` 不是列點。
+  - `touch m_indented`
+  3. 縮排子項描述 `touch m_sub`
+  - `bash tests/test_ok.sh` 縮排列點照常判定
+* `touch m_star`
+1. `touch m4`
+```
+touch m5
+$ bash tests/test_echo.sh
+```
+EOF
+lint "$TMP/cand_pos.md" --repo "$REPO"
+assert_line "cand: 列點第一個 inline code 照常判定" "$OUT" "NOT_RUN grep foo b.txt"
+assert_line "cand: 同列點第二個 inline code 照常印（不計）" "$OUT" "UNLISTED mktemp -d"
+assert_line "cand: 同列點第三個 inline code 照常印（不計）" "$OUT" "UNLISTED touch m_second"
+assert_line "cand: 非列點句中 inline code 照常印（不計）" "$OUT" "UNLISTED touch m_prose"
+assert_line "cand: 縮排列點 UNLISTED 照印但不計" "$OUT" "UNLISTED touch m_indented"
+assert_line "cand: 縮排 N. 子項 UNLISTED 照印但不計" "$OUT" "UNLISTED touch m_sub"
+assert_line "cand: 縮排列點的 NOT_RUN 不變" "$OUT" "NOT_RUN bash tests/test_ok.sh"
+assert_line "cand: * 列點計" "$OUT" "UNLISTED touch m_star"
+assert_line "cand: N. 列點計" "$OUT" "UNLISTED touch m4"
+assert_not_contains "cand: 圍欄內的行不是候選" "$OUT" "m5"
+assert_not_contains "cand: 圍欄內 \$ 行不是候選" "$OUT" "test_echo.sh"
+assert_contains "cand: 只有頂層列點第一個 inline code 計 problems=2" "$OUT" "summary: problems=2"
+
+mkbrief cand_denied_any <<'EOF'
+# t
+## 驗收標準
+說明文字 `rm marker` 與 `bash tests/test_ok.sh`，還有 `grep foo b.txt`。
+EOF
+lint "$TMP/cand_denied_any.md" --repo "$REPO"
+assert_line "cand: 非列點句中也判 DENIED" "$OUT" "DENIED rm marker"
+assert_line "cand: 非列點句中也判 NOT_RUN" "$OUT" "NOT_RUN bash tests/test_ok.sh"
+assert_line "cand: 非列點句中第三個也判 NOT_RUN" "$OUT" "NOT_RUN grep foo b.txt"
+assert_contains "cand: 非列點無 problem" "$OUT" "summary: problems=0"
+
+mkbrief fence_heading <<'EOF'
+# t
+## 其他
+```
+## 驗收標準
+- `touch m_fenced`
+```
+## 驗收標準
+- `grep foo b.txt`
+EOF
+lint "$TMP/fence_heading.md" --repo "$REPO"
+assert_not_contains "fence: 圍欄內的 ## 驗收標準 不算標題" "$OUT" "m_fenced"
+assert_line "fence: 真標題後的指令照常判定" "$OUT" "NOT_RUN grep foo b.txt"
+assert_contains "fence: problems=0" "$OUT" "summary: problems=0"
+
+# ---------- is_command: ./ 開頭 ----------
+printf 'echo local\n' > "$REPO/local_tool"; chmod +x "$REPO/local_tool"
+printf 'echo noexec\n' > "$REPO/not_exec"; chmod -x "$REPO/not_exec"
+mkbrief dotslash <<'EOF'
+# t
+## 驗收標準
+- `./local_tool arg`
+- `./missing_tool arg`
+- `./not_exec arg`
+- `./api/backend/ ./api/front/ -run 'Rebate|Cascade'`
+EOF
+lint "$TMP/dotslash.md" --repo "$REPO"
+assert_line "dotslash: repo 內存在且可執行才是指令（UNLISTED）" "$OUT" "UNLISTED ./local_tool arg"
+assert_not_contains "dotslash: 不存在的 ./x 不是指令" "$OUT" "missing_tool"
+assert_not_contains "dotslash: 存在但不可執行的 ./x 不是指令" "$OUT" "not_exec"
+assert_not_contains "dotslash: ./ 開頭的路徑片段不是指令" "$OUT" "api/backend"
+assert_contains "dotslash: 只有一條計 problems=1" "$OUT" "summary: problems=1"
+
+# ---------- 白名單: 唯讀檢查類 ----------
+mkdir -p "$REPO/node_modules/.bin" "$TMP/fakebin"
+for t in vue-tsc eslint prettier vite; do
+  printf 'echo %s "$@"\n' "$t" > "$REPO/node_modules/.bin/$t"; chmod +x "$REPO/node_modules/.bin/$t"
+done
+for t in gofmt graft swag; do
+  printf 'echo %s "$@"\n' "$t" > "$TMP/fakebin/$t"; chmod +x "$TMP/fakebin/$t"
+done
+mkbrief allow_ro <<'EOF'
+# t
+## 驗收標準
+- `./node_modules/.bin/vue-tsc --noEmit`
+- `./node_modules/.bin/vue-tsc --noEmit --skipLibCheck 2>&1`
+- `./node_modules/.bin/vue-tsc --noEmit --skipLibCheck -p tsconfig.app.json`
+- `./node_modules/.bin/eslint src/a.ts src/views/b.vue`
+- `./node_modules/.bin/prettier --check src/a.ts src/b.ts`
+- `gofmt -l ./services .`
+- `graft blast --base b39ee9f3 --no-refresh`
+- `graft blast --no-refresh`
+EOF
+PATH="$TMP/fakebin:$PATH" lint "$TMP/allow_ro.md" --repo "$REPO"
+assert_line "ro: vue-tsc --noEmit" "$OUT" "NOT_RUN ./node_modules/.bin/vue-tsc --noEmit"
+assert_line "ro: vue-tsc --noEmit --skipLibCheck 2>&1" "$OUT" "NOT_RUN ./node_modules/.bin/vue-tsc --noEmit --skipLibCheck 2>&1"
+assert_line "ro: vue-tsc -p 專案檔" "$OUT" "NOT_RUN ./node_modules/.bin/vue-tsc --noEmit --skipLibCheck -p tsconfig.app.json"
+assert_line "ro: eslint 檔案" "$OUT" "NOT_RUN ./node_modules/.bin/eslint src/a.ts src/views/b.vue"
+assert_line "ro: prettier --check" "$OUT" "NOT_RUN ./node_modules/.bin/prettier --check src/a.ts src/b.ts"
+assert_line "ro: gofmt -l" "$OUT" "NOT_RUN gofmt -l ./services ."
+assert_line "ro: graft blast --no-refresh（帶 --base）" "$OUT" "NOT_RUN graft blast --base b39ee9f3 --no-refresh"
+assert_line "ro: graft blast --no-refresh" "$OUT" "NOT_RUN graft blast --no-refresh"
+assert_contains "ro: 全部在白名單 problems=0" "$OUT" "summary: problems=0"
+
+mkbrief allow_ro_bad <<'EOF'
+# t
+## 驗收標準
+- `./node_modules/.bin/vue-tsc --noEmit --build`
+- `./node_modules/.bin/vue-tsc --noEmit > out.txt`
+- `./node_modules/.bin/eslint --fix src/a.ts`
+- `./node_modules/.bin/eslint --fix-dry-run src/a.ts`
+- `./node_modules/.bin/eslint --output-file o.txt src/a.ts`
+- `./node_modules/.bin/prettier --write src/a.ts`
+- `./node_modules/.bin/prettier --check --write src/a.ts`
+- `./node_modules/.bin/vite build`
+- `gofmt -w x.go`
+- `gofmt -l x.go > o.txt`
+- `graft blast --base dev`
+- `graft blast --no-refresh --out o.json`
+- `swag init`
+EOF
+PATH="$TMP/fakebin:$PATH" lint "$TMP/allow_ro_bad.md" --repo "$REPO"
+assert_line "ro-bad: vue-tsc 其他旗標 UNLISTED" "$OUT" "UNLISTED ./node_modules/.bin/vue-tsc --noEmit --build"
+assert_line "ro-bad: vue-tsc 重導向寫檔 UNLISTED" "$OUT" "UNLISTED ./node_modules/.bin/vue-tsc --noEmit > out.txt"
+assert_line "ro-bad: eslint --fix DENIED" "$OUT" "DENIED ./node_modules/.bin/eslint --fix src/a.ts"
+assert_line "ro-bad: eslint --fix-dry-run DENIED" "$OUT" "DENIED ./node_modules/.bin/eslint --fix-dry-run src/a.ts"
+assert_line "ro-bad: eslint --output-file DENIED" "$OUT" "DENIED ./node_modules/.bin/eslint --output-file o.txt src/a.ts"
+assert_line "ro-bad: prettier --write UNLISTED" "$OUT" "UNLISTED ./node_modules/.bin/prettier --write src/a.ts"
+assert_line "ro-bad: prettier --check --write UNLISTED" "$OUT" "UNLISTED ./node_modules/.bin/prettier --check --write src/a.ts"
+assert_line "ro-bad: vite build UNLISTED" "$OUT" "UNLISTED ./node_modules/.bin/vite build"
+assert_line "ro-bad: gofmt -w UNLISTED" "$OUT" "UNLISTED gofmt -w x.go"
+assert_line "ro-bad: gofmt 重導向 UNLISTED" "$OUT" "UNLISTED gofmt -l x.go > o.txt"
+assert_line "ro-bad: graft blast 無 --no-refresh UNLISTED" "$OUT" "UNLISTED graft blast --base dev"
+assert_line "ro-bad: graft blast 其他旗標 UNLISTED" "$OUT" "UNLISTED graft blast --no-refresh --out o.json"
+assert_line "ro-bad: swag init UNLISTED" "$OUT" "UNLISTED swag init"
+assert_contains "ro-bad: 十條 UNLISTED 指令形狀計 problems（三條 DENIED 不計）" "$OUT" "summary: problems=10"
+
+# ---------- ACK: 白名單指令、括號理由 ----------
+mkbrief ack_allowed <<'EOF'
+# t
+## 驗收標準
+- `bash tests/test_touch.sh ran_ack` （不實跑：會寫檔）
+- `bash tests/test_touch.sh ran_noack`
+- `touch m1 （不實跑：寫在 code 內）`
+- `touch m2` （不實跑：理由含 (括號) 與 （全形括號））
+EOF
+lint "$TMP/ack_allowed.md" --repo "$REPO" --run
+assert_line "ack: 白名單指令加 ACK → NOT_RUN_ACK" "$OUT" "NOT_RUN_ACK bash tests/test_touch.sh ran_ack"
+assert_eq "ack: NOT_RUN_ACK 在 --run 下也不執行" "no" "$(exists "$REPO/ran_ack")"
+assert_line "ack: 沒 ACK 的白名單指令照跑" "$OUT" "RUN exit=0 bash tests/test_touch.sh ran_noack"
+assert_eq "ack: 沒 ACK 的真的跑了" "yes" "$(exists "$REPO/ran_noack")"
+assert_line "ack: ACK 寫在 code 內先剝除再判定" "$OUT" "UNLISTED_ACK touch m1"
+assert_line "ack: 理由含括號仍認" "$OUT" "UNLISTED_ACK touch m2"
+assert_contains "ack: 全部 ACK 不計 problems=0" "$OUT" "summary: problems=0"
+rm -f "$REPO/ran_noack"
+
+mkbrief ack_last_only <<'EOF'
+# t
+## 驗收標準
+- `touch a1` 與 `touch a2` （不實跑：只套最後一個）
+- `touch b1` （不實跑：理由）（後面又有一段）
+- `touch b2` （不實跑：理由含 (一層 (兩層) 巢狀) 結束）
+- `touch b3` （不實跑：理由含 (一層) 與 （另一組）結束）
+EOF
+lint "$TMP/ack_last_only.md" --repo "$REPO"
+assert_line "ack: 同行多個 code 只有最後一個吃 ACK（前者仍 UNLISTED）" "$OUT" "UNLISTED touch a1"
+assert_line "ack: 同行最後一個 code 吃 ACK" "$OUT" "UNLISTED_ACK touch a2"
+assert_line "ack: 後面還有另一組括號不吃" "$OUT" "UNLISTED touch b1"
+assert_line "ack: 理由內超過一層巢狀不認" "$OUT" "UNLISTED touch b2"
+assert_line "ack: 理由內一層巢狀（含並列兩組）仍認" "$OUT" "UNLISTED_ACK touch b3"
+assert_contains "ack: a1、b1、b2 計 problems=3" "$OUT" "summary: problems=3"
+
+# ---------- DENY_ENV／路徑引數不含 .. ----------
+{ echo '# t'; echo '## 驗收標準'
+  for v in PYTHONPATH PYTHONUSERBASE PYTHONSTARTUP PYTHONHOME NODE_OPTIONS NODE_PATH HOME XDG_CONFIG_HOME XDG_DATA_DIRS GOENV GOROOT GOTOOLCHAIN PYTHONWARNINGS; do echo "- \`$v=x grep foo b.txt\`"; done; } > "$TMP/deny_env2.md"
+lint "$TMP/deny_env2.md" --repo "$REPO"
+for v in PYTHONPATH PYTHONUSERBASE PYTHONSTARTUP PYTHONHOME NODE_OPTIONS NODE_PATH HOME XDG_CONFIG_HOME XDG_DATA_DIRS GOENV GOROOT GOTOOLCHAIN PYTHONWARNINGS; do
+  assert_line "deny-env: $v 前綴賦值 DENIED" "$OUT" "DENIED $v=x grep foo b.txt"
+done
+mkbrief path_dotdot <<'EOF'
+# t
+## 驗收標準
+- `gofmt -l ../x`
+- `gofmt -l src/../../x`
+- `./node_modules/.bin/eslint ../../etc`
+- `./node_modules/.bin/prettier --check ../a.ts`
+- `./node_modules/.bin/vue-tsc --noEmit -p /etc/tsconfig.json`
+- `./node_modules/.bin/vue-tsc --noEmit -p sub/tsconfig.json`
+- `gofmt -l src/a..b`
+- `gofmt -l src/ok.go`
+EOF
+PATH="$TMP/fakebin:$PATH" lint "$TMP/path_dotdot.md" --repo "$REPO"
+assert_line "dotdot: gofmt ../x 不放行" "$OUT" "UNLISTED gofmt -l ../x"
+assert_line "dotdot: gofmt 中段 .. 不放行" "$OUT" "UNLISTED gofmt -l src/../../x"
+assert_line "dotdot: eslint ../ 不放行" "$OUT" "UNLISTED ./node_modules/.bin/eslint ../../etc"
+assert_line "dotdot: prettier ../ 不放行" "$OUT" "UNLISTED ./node_modules/.bin/prettier --check ../a.ts"
+assert_line "abs: vue-tsc -p 絕對路徑不放行" "$OUT" "UNLISTED ./node_modules/.bin/vue-tsc --noEmit -p /etc/tsconfig.json"
+assert_line "abs: vue-tsc -p 相對路徑放行" "$OUT" "NOT_RUN ./node_modules/.bin/vue-tsc --noEmit -p sub/tsconfig.json"
+assert_line "dotdot: 含 .. 子字串一律不放行" "$OUT" "UNLISTED gofmt -l src/a..b"
+assert_line "dotdot: 正常路徑照放行" "$OUT" "NOT_RUN gofmt -l src/ok.go"
+
+# ---------- graft blast: --base 值限制 ----------
+mkbrief graft_base <<'EOF'
+# t
+## 驗收標準
+- `graft blast --base origin/dev^ --no-refresh`
+- `graft blast --base HEAD~3 --no-refresh`
+- `graft blast --base {HEAD,--export-viz=x} --no-refresh`
+- `graft blast --base x${IFS}--export-viz --no-refresh`
+- `graft blast --base --no-refresh .`
+- `graft blast --base ~x --no-refresh`
+EOF
+PATH="$TMP/fakebin:$PATH" lint "$TMP/graft_base.md" --repo "$REPO"
+assert_line "graft: --base 帶 ^ 放行" "$OUT" "NOT_RUN graft blast --base origin/dev^ --no-refresh"
+assert_line "graft: --base 帶 ~（非首字）放行" "$OUT" "NOT_RUN graft blast --base HEAD~3 --no-refresh"
+assert_line "graft: --base 大括號展開不放行" "$OUT" "UNLISTED graft blast --base {HEAD,--export-viz=x} --no-refresh"
+assert_line "graft: --base \${IFS} 不放行" "$OUT" 'UNLISTED graft blast --base x${IFS}--export-viz --no-refresh'
+assert_line "graft: --base 後直接接旗標不放行" "$OUT" "UNLISTED graft blast --base --no-refresh ."
+assert_line "graft: --base ~ 開頭不放行" "$OUT" "UNLISTED graft blast --base ~x --no-refresh"
+assert_contains "graft: 四條反例計 problems=4" "$OUT" "summary: problems=4"
+
+# ---------- 錨點: 無反引號路徑與片段之間可夾空白 ----------
+mkbrief snip_space_between <<'EOF'
+# t
+無反引號夾空白相符 src/foo.go:3 「func NewFoo」，不符 src/foo.go:4 「nothere」。
+EOF
+lint "$TMP/snip_space_between.md" --repo "$REPO"
+assert_contains "snippet: p:n 「x」 夾空白相符 OK" "$OUT" "OK src/foo.go:3 | func NewFoo() int {"
+assert_line "snippet: p:n 「x」 夾空白不符 MISMATCH" "$OUT" "SNIPPET_MISMATCH src/foo.go:4 「nothere」 | 實際：return 1"
+
+# ---------- 未預期例外 → exit 2 ----------
+if [ "$(id -u)" != "0" ]; then
+  cp "$TMP/refs_abs.md" "$TMP/unreadable.md"; chmod 000 "$TMP/unreadable.md"
+  lint "$TMP/unreadable.md" --repo "$REPO"
+  assert_eq "exception: 讀不到 brief → exit 2（不與 problems 的 exit 1 混同）" 2 "$RC"
+  assert_contains "exception: 印出訊息" "$OUT" "brief-lint:"
+  chmod 600 "$TMP/unreadable.md"
+fi
+
+# ---------- scope: 路徑判定 ----------
+IGN_ABS="$(cd "$IGN" && pwd -P)"
+mkbrief scope_paths <<EOF
+# t
+## 範圍
+- \`~/checks/home.json\`、\`/elsewhere/checks/out.json\`、\`$IGN_ABS/checks/in.json\`
+- \`checks/*.json\`、\`src/*.go\`
+EOF
+lint "$TMP/scope_paths.md" --repo "$IGN_ABS"
+assert_line "scope: repo 內絕對路徑轉相對再查" "$OUT" "IGNORED_PATH checks/in.json"
+assert_not_contains "scope: ~ 開頭略過" "$OUT" "home.json"
+assert_not_contains "scope: repo 外絕對路徑略過" "$OUT" "out.json"
+assert_line "scope: glob 印 SCOPE_GLOB_SKIPPED（ignore 目錄）" "$OUT" "SCOPE_GLOB_SKIPPED checks/*.json"
+assert_line "scope: glob 印 SCOPE_GLOB_SKIPPED（一般）" "$OUT" "SCOPE_GLOB_SKIPPED src/*.go"
+assert_contains "scope: glob 不計、只有 in.json 計 problems=1" "$OUT" "summary: problems=1"
+
+NOGIT="$TMP/nogit"
+mkdir -p "$NOGIT"
+mkbrief scope_nogit <<'EOF'
+# t
+## 範圍
+- `src/a.go`
+EOF
+lint "$TMP/scope_nogit.md" --repo "$NOGIT"
+assert_line "scope: 非 git 目錄印 SCOPE_UNCHECKED 帶 rc" "$OUT" "SCOPE_UNCHECKED src/a.go 128"
+assert_contains "scope: 非 git 目錄 problems=0" "$OUT" "summary: problems=0"
+assert_eq "scope: 非 git 目錄不 exit 2" 0 "$RC"
+
+# ---------- --help ----------
+HELP="$(python3 "$BRIEF_LINT" --help 2>&1)"; HRC=$?
+assert_eq "help: exit 0" 0 "$HRC"
+assert_contains "help: 說明 SNIPPET_MISMATCH" "$HELP" "SNIPPET_MISMATCH"
+assert_contains "help: 說明 UNLISTED_ACK" "$HELP" "UNLISTED_ACK"
+assert_contains "help: 說明 NOT_RUN_ACK" "$HELP" "NOT_RUN_ACK"
+assert_contains "help: 寫明新增 bin 工具需同步 --help 清單" "$HELP" "同步"
+assert_contains "help: 已知限制寫明依賴 shutil.which" "$HELP" "shutil.which"
+assert_contains "help: 引用檔頭 docstring（單一 source）" "$HELP" "用法：brief-lint"
+assert_contains "help: 說明 IGNORED_PATH" "$HELP" "IGNORED_PATH"
+assert_contains "help: 說明 SCOPE_GLOB_SKIPPED" "$HELP" "SCOPE_GLOB_SKIPPED"
+assert_contains "help: 說明 SCOPE_UNCHECKED" "$HELP" "SCOPE_UNCHECKED"
+assert_contains "help: 寫明片段含「」」的已知限制" "$HELP" "已知限制"
 
 echo "TOTAL: $((PASS_COUNT + FAIL_COUNT))  PASS: $PASS_COUNT  FAIL: $FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

@@ -62,6 +62,17 @@ CASES = [
     ('gate-evidence "waive" --repo . --reason x', "ask"),
     ('"gate-evidence" waive --repo . --reason x', "ask"),
     ('gate-evidence -- waive --repo . --reason x', "ask"),
+    # 回歸護欄：非單純形式的 git merge 不新增 ask
+    ("cd /tmp && git merge --squash feature/x", "allow"),
+    ("cd /tmp && git merge feature/x && echo ok", "allow"),
+    ("cd /tmp && git merge feature/x | cat", "allow"),
+    ("cd /tmp && git -c a.b=c merge feature/x", "allow"),
+    ("cd /tmp && git merge 'feature/*'", "allow"),
+    ("cd /tmp && git merge -m", "allow"),
+    # 單純形式但目標無法判定：octopus、`-`、~ 路徑
+    ("cd /tmp && git merge a b", "ask"),
+    ("cd /tmp && git merge -", "ask"),
+    ("cd ~/x && git merge a", "ask"),
     # (command, expected)
     ("rm " + "-rf /tmp/x", "deny"),
     ("git add " + ".", "deny"),
@@ -264,7 +275,7 @@ CASES = [
 ]
 
 
-# 超長命令：不跑 FORCE_RE／PUSH_RE／simple_push；git、push 字串都在就問，既有 regex 照跑
+# 超長命令：不跑 FORCE_RE／PUSH_RE／push_target；git、push 字串都在就問，既有 regex 照跑
 PAD = " # " + "x" * 9000
 LONG_CASES = [
     ("grep nginx " + "a" * 9000, "ask", "全域規則"),
@@ -365,7 +376,7 @@ def main():
 
     bg = load_guard()
     fails += check(bg.simple_readonly("cat a#;sh b") is False, "simple_readonly('cat a#;sh b') is False")
-    fails += check(bg.simple_push(f"{PUSH} o ^d", "/r") is None, "simple_push 拒 ^ref")
+    fails += check(bg.push_target(f"{PUSH} o ^d", "/r") is None, "push_target 拒 ^ref")
 
     for cmd in PATHOLOGICAL:
         started = time.monotonic()

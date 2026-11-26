@@ -4,6 +4,7 @@ GATE_EVIDENCE_DIR 與 HOME 都指向臨時目錄，絕不寫真實 ~/.claude/evi
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,8 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLI = os.path.join(ROOT, "bin", "gate-evidence")
 GUARD = os.path.join(ROOT, "hooks", "bash_guard.py")
+PUSH_PLAN = os.path.join(ROOT, "bin", "push-plan")
+PUSH_PLAN_LIST = re.compile(r"\n快照一致（[^）\n]+），待推 commit：(?:\n[0-9a-f]{7,40} [^\n]*)*")
 PUSH = "git pu" + "sh"
 FORCE = "-" + "f"
 PLAIN_ASK = "Push 閘門：git push 需要 Mike 明確確認才能執行。"
@@ -722,7 +725,18 @@ class Waive(Base):
 
 
 class HookCase(Base):
+    def env(self):
+        return dict(super().env(), PUSH_PLAN_STATE=os.path.join(self.tmp, "push-plan"))
+
+    def snapshot_pending_branches(self):
+        for branch in git(self.repo, "for-each-ref", "--format=%(refname:lstrip=3)", "refs/remotes/origin").split():
+            p = subprocess.run([sys.executable, PUSH_PLAN, "snapshot", "--repo", self.repo, "--branch", branch,
+                                "--no-fetch"], capture_output=True, text=True, env=self.env())
+            self.assertIn(p.returncode, (0, 3), p.stdout + p.stderr)
+
     def hook(self, cmd, cwd=None, guard=GUARD):
+        if "push" in cmd:
+            self.snapshot_pending_branches()
         payload = {"tool_input": {"command": cmd}, "cwd": cwd or self.repo}
         p = subprocess.run(["python3", guard], input=json.dumps(payload), capture_output=True, text=True,
                            env=self.env())
@@ -739,7 +753,8 @@ class HookCase(Base):
         self.assertIn("db-review", reason, cmd)
 
     def assertPlainAsk(self, cmd, cwd=None):
-        self.assertEqual(self.hook(cmd, cwd), ("ask", PLAIN_ASK), cmd)
+        decision, reason = self.hook(cmd, cwd)
+        self.assertEqual((decision, PUSH_PLAN_LIST.sub("", reason)), ("ask", PLAIN_ASK), cmd)
 
     def assertUndecided(self, cmd, cwd=None):
         decision, reason = self.hook(cmd, cwd)
@@ -1147,7 +1162,7 @@ class PushGateFailure(HookCase):
 
     def test_uncaught_exception_inside_push_analysis_asks(self):
         bg = self.load_guard()
-        with mock.patch.object(bg, "simple_push", side_effect=RuntimeError("boom")):
+        with mock.patch.object(bg, "push_target", side_effect=RuntimeError("boom")):
             decision, reason = bg.push_gate(f"{PUSH} origin dev", self.repo)
         self.assertEqual(decision, "ask")
         self.assertIn(UNDECIDED, reason)
@@ -1157,20 +1172,20 @@ class PushGateFailure(HookCase):
         with mock.patch.object(bg, "plain_tokens", side_effect=RuntimeError("boom")):
             self.assertFalse(bg.simple_readonly("grep nginx a"))
 
-    def test_simple_push_shapes(self):
+    def test_push_target_shapes(self):
         bg = self.load_guard()
         for cmd, cwd, expected in (
                 (PUSH, "/r", ("/r", None, [])),
                 (f"{PUSH} o", "/r", ("/r", "o", [])),
-                (f"{PUSH} -u o HEAD:dev x", "/r", ("/r", "o", ["HEAD", "x"])),
-                (PUSH.replace("git ", "git -C 'a b' ") + " o d", "/r", ("/r/a b", "o", ["d"])),
-                (PUSH.replace("git ", "git -C /abs ") + " o d", None, ("/abs", "o", ["d"])),
-                (f"cd sub && {PUSH} o d", "/r", ("/r/sub", "o", ["d"])),
-                (f"cd /a && " + PUSH.replace("git ", "git -C b ") + " o d", None, ("/a/b", "o", ["d"]))):
-            self.assertEqual(bg.simple_push(cmd, cwd), expected, cmd)
+                (f"{PUSH} -u o HEAD:dev x", "/r", ("/r", "o", [("HEAD", "dev"), ("x", "x")])),
+                (PUSH.replace("git ", "git -C 'a b' ") + " o d", "/r", ("/r/a b", "o", [("d", "d")])),
+                (PUSH.replace("git ", "git -C /abs ") + " o d", None, ("/abs", "o", [("d", "d")])),
+                (f"cd sub && {PUSH} o d", "/r", ("/r/sub", "o", [("d", "d")])),
+                (f"cd /a && " + PUSH.replace("git ", "git -C b ") + " o d", None, ("/a/b", "o", [("d", "d")]))):
+            self.assertEqual(bg.push_target(cmd, cwd), expected, cmd)
         for cmd, cwd in ((PUSH, None), (f"cd sub && {PUSH}", None), (f"{PUSH} 'x", "/r"), ("git -C", "/r"),
                          (PUSH.replace("git ", "git -C a -C b "), "/r"), ("git status", "/r")):
-            self.assertIsNone(bg.simple_push(cmd, cwd), cmd)
+            self.assertIsNone(bg.push_target(cmd, cwd), cmd)
 
     def test_gate_arguments_follow_the_command(self):
         guard = self.tree_with_gate("import sys\nprint(sys.argv[1:])\nsys.exit(1)\n")

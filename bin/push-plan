@@ -6,9 +6,13 @@
       先 git fetch <remote> <branch>（--no-fetch 跳過），列出 <remote_head>..<local_head> 的 commit，
       寫快照 ${PUSH_PLAN_STATE:-$HOME/.claude/state/push-plan}/<主checkout basename>-<branch>.json，
       最後一行印建議 push 指令（以 local_head hash 當 src）。
-  push-plan check --repo <路徑> [--branch dev] [--no-fetch]
-      重新取 local_head 與 <remote>/<branch>，與快照比對；有差異時印出
+  push-plan check --repo <路徑> [--branch dev] [--no-fetch] [--remote <r>] [--src <rev>]
+      重新取 local_head 與 <remote>/<branch>，與快照比對；一致時印「快照一致（<branch>），待推 commit：」
+      加上每顆待推 commit 的「%h %s」；有差異時印出
       「remote 新增」（remote 前進的 commit）、「新增」「消失」（待推清單與快照的差集）。
+      --remote 須等於快照的 remote，不符時印出兩邊並 exit 1。
+      --src（本次要推的 src，解析成 commit）須等於快照 local_head，否則 exit 1：src 就是目前
+      local_head 時印上面的差異明細，其他 src 印快照 local_head 與本次 src。
   push-plan --help
 
 exit code：
@@ -35,10 +39,11 @@ class PushPlanError(Exception):
 
 
 def git(repo, *args):
-    result = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    """以 bytes 讀再解碼：text=True 的 universal newlines 會把 commit 主旨裡的 \\r 變成換行。"""
+    result = subprocess.run(["git", "-C", repo, *args], capture_output=True)
     if result.returncode != 0:
-        raise PushPlanError(f"git {' '.join(args)} 失敗：{result.stderr.strip()}")
-    return result.stdout.strip()
+        raise PushPlanError(f"git {' '.join(args)} 失敗：{result.stderr.decode('utf-8', 'replace').strip()}")
+    return result.stdout.decode("utf-8", "replace").strip("\n")
 
 
 def main_checkout(repo):
@@ -70,7 +75,7 @@ def parse_log_line(line):
 
 
 def log_entries(repo, older, newer):
-    lines = git(repo, "log", "--format=%H %h %s", f"{older}..{newer}").splitlines()
+    lines = [line for line in git(repo, "log", "--format=%H %h %s", f"{older}..{newer}").split("\n") if line]
     return [parse_log_line(line) for line in lines]
 
 
@@ -127,16 +132,41 @@ def verify_ownership(snapshot, main, branch):
         raise PushPlanError(f"快照 branch 與指定分支不一致：快照={snapshot['branch']} 現在={branch}")
 
 
+def remote_mismatch(args, snapshot):
+    if args.remote is not None and args.remote != snapshot["remote"]:
+        return f"remote 與快照不一致：快照={snapshot['remote']} 本次={args.remote}"
+    return None
+
+
+def src_mismatch(args, snapshot, main, local_head):
+    if args.src is None:
+        return None
+    src = git(main, "rev-parse", "--verify", "--end-of-options", f"{args.src}^{{commit}}")
+    if src in (snapshot["local_head"], local_head):
+        return None
+    return f"src 與快照不一致：快照 local_head={snapshot['local_head']} 本次 src={args.src} ({src})"
+
+
 def cmd_check(args):
     main = main_checkout(args.repo)
     snapshot = load_snapshot(main, args.branch)
     verify_ownership(snapshot, main, args.branch)
+    mismatch = remote_mismatch(args, snapshot)
+    if mismatch:
+        print(mismatch)
+        return EXIT_CHANGED
     remote = snapshot["remote"]
     if not args.no_fetch:
         git(main, "fetch", remote, args.branch)
     local_head, remote_head = resolve_heads(main, remote, args.branch)
+    mismatch = src_mismatch(args, snapshot, main, local_head)
+    if mismatch:
+        print(mismatch)
+        return EXIT_CHANGED
     if (local_head, remote_head) == (snapshot["local_head"], snapshot["remote_head"]):
-        print("快照一致")
+        print(f"快照一致（{args.branch}），待推 commit：")
+        for entry in log_entries(main, remote_head, local_head):
+            print(f"{entry.short} {entry.subject}")
         return EXIT_OK
     remote_advanced = log_entries(main, snapshot["remote_head"], remote_head)
     pending_now = log_entries(main, remote_head, local_head)
@@ -166,6 +196,8 @@ def build_parser():
     snap = sub.add_parser("snapshot")
     snap.add_argument("--remote", default="origin")
     chk = sub.add_parser("check")
+    chk.add_argument("--remote")
+    chk.add_argument("--src")
     for p in (snap, chk):
         p.add_argument("--repo", required=True)
         p.add_argument("--branch", default="dev")

@@ -430,5 +430,124 @@ assert_not_contains "替身不判 migration → 輸出不命中 migration（沒�
 grep -qE 'MIGRATION_DIRS|sites-available' "$DIFF_SURFACE"
 assert_eq "diff-surface 未自寫 migration／nginx 判定" 1 $?
 
+echo "--- --record ---"
+json_field() { # json_field <檔> <python 運算式，變數 d>
+  python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$1" "$2"
+}
+fresh_state() { # 每案一個全新 state 目錄，不需刪除
+  STATE="$TMP/state-$CASE_N"
+  export DIFF_SURFACE_STATE="$STATE"
+}
+rec_file() { # rec_file <toplevel 路徑>：該 worktree 的紀錄檔（realpath 的 sha1 前 12 碼）
+  printf '%s/%s.json' "$STATE" "$(printf '%s' "$(cd "$1" && pwd -P)" | shasum | cut -c1-12)"
+}
+file_exists() { [ -f "$1" ] && echo 1 || echo 0; }
+path_exists() { [ -e "$1" ] && echo 1 || echo 0; }
+
+new_repo; fresh_state; put svc/pay.go 'package pay'; commit_all
+run --record
+REC="$(rec_file "$REPO")"
+HEAD_HASH="$(git -C "$REPO" rev-parse HEAD)"
+assert_eq "--record exit 0" 0 "$RC"
+assert_line "--record 最後一行印 RECORDED 路徑" "$(printf '%s\n' "$OUT" | tail -n 1)" "RECORDED $REC"
+assert_eq "--record 寫出以 toplevel 雜湊命名的檔" 1 "$(file_exists "$REC")"
+assert_eq "record.repo 是 toplevel realpath" "$(cd "$REPO" && pwd -P)" "$(json_field "$REC" 'd["repo"]')"
+assert_eq "record.base" "base" "$(json_field "$REC" 'd["base"]')"
+assert_eq "record.head 是 HEAD 的 hash" "$HEAD_HASH" "$(json_field "$REC" 'd["head"]')"
+assert_eq "record.checkout_head 是 HEAD 的 hash" "$HEAD_HASH" "$(json_field "$REC" 'd["checkout_head"]')"
+assert_eq "record.worktree 預設 False" "False" "$(json_field "$REC" 'd["worktree"]')"
+assert_eq "record.reviewers" "code-reviewer,security-reviewer" "$(json_field "$REC" '",".join(d["reviewers"])')"
+assert_eq "record.lane_floor" "/feature（硬排除：金流）" "$(json_field "$REC" 'd["lane_floor"]')"
+assert_eq "record.categories 是類別名清單" "金流" "$(json_field "$REC" '",".join(d["categories"])')"
+assert_eq "record.time 是 +00:00 形 ISO8601" 1 \
+  "$(json_field "$REC" 'int(d["time"].endswith("+00:00") and __import__("datetime").datetime.fromisoformat(d["time"]).utcoffset().total_seconds()==0)')"
+assert_eq "record 欄位齊全" "base,categories,checkout_head,head,lane_floor,repo,reviewers,time,worktree" "$(json_field "$REC" '",".join(sorted(d))')"
+
+echo "--- --record：--head、--include-worktree、覆寫 ---"
+new_repo; fresh_state; put svc/a.go 'package a'; commit_all
+REC="$(rec_file "$REPO")"
+put svc/b.go 'package b'; commit_all
+OLD_HEAD="$(git -C "$REPO" rev-parse HEAD~1)"
+run --head HEAD~1 --record
+assert_eq "--head 指定 → record.head 為該 ref 的 hash" "$OLD_HEAD" "$(json_field "$REC" 'd["head"]')"
+assert_eq "--head 指定 → record.checkout_head 仍是目前 checkout 的 HEAD" "$(git -C "$REPO" rev-parse HEAD)" "$(json_field "$REC" 'd["checkout_head"]')"
+run --include-worktree --record
+assert_eq "--include-worktree → record.head 為 HEAD hash" "$(git -C "$REPO" rev-parse HEAD)" "$(json_field "$REC" 'd["head"]')"
+assert_eq "--include-worktree → record.worktree True" "True" "$(json_field "$REC" 'd["worktree"]')"
+assert_eq "同 worktree 只留一份（覆寫）" 1 "$(ls "$STATE" | wc -l | tr -d ' ')"
+put svc/auth.go 'package a'; commit_all
+run --record
+assert_eq "覆寫後 record 反映最新結果" "認證" "$(json_field "$REC" '",".join(d["categories"])')"
+
+echo "--- --record：不帶旗標不寫檔、--json 保持可解析 ---"
+new_repo; fresh_state; put svc/a.go 'package a'; commit_all
+run
+assert_eq "不帶 --record 不建 state 目錄" 0 "$(path_exists "$STATE")"
+assert_not_contains "不帶 --record 不印 RECORDED" "$OUT" "RECORDED"
+OUT="$("$DIFF_SURFACE" --repo "$REPO" --base base --json --record 2>/dev/null)"; RC=$?
+assert_eq "--json --record：stdout 仍是合法 JSON" 0 "$(printf '%s' "$OUT" | python3 -I -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1; echo $?)"
+assert_eq "--json --record 寫檔" 1 "$(file_exists "$(rec_file "$REPO")")"
+ERR="$("$DIFF_SURFACE" --repo "$REPO" --base base --json --record 2>&1 >/dev/null)"
+assert_contains "--json --record：RECORDED 印在 stderr" "$ERR" "RECORDED $(rec_file "$REPO")"
+
+echo "--- --record：worktree 各自一份 ---"
+new_repo; fresh_state; put svc/a.go 'package a'; commit_all
+WT="$TMP/wt-of-repo$CASE_N"
+(cd "$REPO" && git worktree add -q -b wt-x "$WT") >/dev/null 2>&1
+run --record
+OUT="$("$DIFF_SURFACE" --repo "$WT" --base base --record 2>&1)"; RC=$?
+assert_eq "worktree 內跑 exit 0" 0 "$RC"
+assert_eq "主 checkout 與 worktree 紀錄並存" 2 "$(ls "$STATE" | wc -l | tr -d ' ')"
+assert_eq "worktree 紀錄 repo 是 worktree 路徑" "$(cd "$WT" && pwd -P)" "$(json_field "$(rec_file "$WT")" 'd["repo"]')"
+assert_eq "主 checkout 紀錄 repo 是主 checkout 路徑" "$(cd "$REPO" && pwd -P)" "$(json_field "$(rec_file "$REPO")" 'd["repo"]')"
+
+echo "--- --record：空樹當 base（全 repo 總審）---"
+new_repo; fresh_state; put svc/pay.go 'package pay'; commit_all
+EMPTY_TREE="$(git -C "$REPO" hash-object -t tree /dev/null)"
+OUT="$("$DIFF_SURFACE" --repo "$REPO" --base "$EMPTY_TREE" --record 2>&1)"; RC=$?
+assert_eq "空樹 base exit 0" 0 "$RC"
+assert_contains "空樹 base：README 也在 stat" "$OUT" "README.md"
+assert_contains "空樹 base：命中金流" "$(section 命中類別)" "svc/pay.go"
+assert_eq "空樹 base 產生紀錄" 1 "$(file_exists "$(rec_file "$REPO")")"
+assert_eq "空樹 base：record.base" "$EMPTY_TREE" "$(json_field "$(rec_file "$REPO")" 'd["base"]')"
+OUT="$("$DIFF_SURFACE" --repo "$REPO" --base "$EMPTY_TREE" --include-worktree 2>&1)"; RC=$?
+assert_eq "空樹 base＋--include-worktree exit 0" 0 "$RC"
+assert_contains "空樹 base＋--include-worktree：含 README" "$OUT" "README.md"
+
+echo "--- --record：原子寫入、權限、unborn HEAD ---"
+new_repo; fresh_state; put svc/a.go 'package a'; commit_all
+mkdir -p "$STATE"
+printf 'victim\n' > "$TMP/victim-$CASE_N"
+ln -s "$TMP/victim-$CASE_N" "$(rec_file "$REPO")"
+run --record
+assert_eq "預置符號連結的紀錄檔：--record exit 0" 0 "$RC"
+assert_eq "符號連結指向的檔案內容不變" "victim" "$(cat "$TMP/victim-$CASE_N")"
+assert_eq "紀錄檔被換成一般檔（不再是符號連結）" 0 "$([ -L "$(rec_file "$REPO")" ] && echo 1 || echo 0)"
+assert_eq "紀錄檔內容是合法紀錄" "base" "$(json_field "$(rec_file "$REPO")" 'd["base"]')"
+assert_eq "state 目錄只留紀錄檔（無殘留暫存檔）" 1 "$(ls -A "$STATE" | wc -l | tr -d ' ')"
+new_repo; fresh_state; put svc/a.go 'package a'; commit_all
+run --record
+assert_eq "新建 state 目錄權限 700" "0o700" "$(python3 -I -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$STATE")"
+assert_eq "紀錄檔權限 600" "0o600" "$(python3 -I -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$(rec_file "$REPO")")"
+fresh_state
+REPO="$TMP/unborn$CASE_N"; mkdir -p "$REPO"
+(cd "$REPO" && git init -q) >/dev/null 2>&1
+put svc/a.go 'package a'
+EMPTY_TREE="$(git -C "$REPO" hash-object -t tree /dev/null)"
+OUT="$("$DIFF_SURFACE" --repo "$REPO" --base "$EMPTY_TREE" --include-worktree --record 2>&1)"; RC=$?
+assert_eq "unborn HEAD＋空樹 base＋--include-worktree＋--record → exit 0" 0 "$RC"
+assert_eq "unborn HEAD → record.head 為 null" "None" "$(json_field "$(rec_file "$REPO")" 'd["head"]')"
+assert_eq "unborn HEAD → record.checkout_head 為 null" "None" "$(json_field "$(rec_file "$REPO")" 'd["checkout_head"]')"
+
+echo "--- --record：失敗不寫檔 ---"
+new_repo; fresh_state
+OUT="$("$DIFF_SURFACE" --repo "$REPO" --base no-such-ref --record 2>&1)"; RC=$?
+assert_eq "base 不存在＋--record → exit 2" 2 "$RC"
+assert_eq "失敗時不留 state" 0 "$(path_exists "$STATE")"
+printf 'x' > "$TMP/state-is-file"
+OUT="$(DIFF_SURFACE_STATE="$TMP/state-is-file" "$DIFF_SURFACE" --repo "$REPO" --base base --record 2>&1)"; RC=$?
+assert_eq "state 路徑是檔案 → diff-surface exit 2" 2 "$RC"
+unset DIFF_SURFACE_STATE
+
 echo "TOTAL: $((PASS_COUNT + FAIL_COUNT))  PASS: $PASS_COUNT  FAIL: $FAIL_COUNT"
 [ "$FAIL_COUNT" -eq 0 ]

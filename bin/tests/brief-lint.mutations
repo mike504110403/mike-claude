@@ -41,7 +41,7 @@ expect: red
 
 id: M-ref-dedupe
 file: bin/brief-lint
-sed: s/if ref in seen:/if False:/
+sed: s/if (ref, snippet) in seen:/if False:/
 expect: red
 
 id: M-tests-count
@@ -177,4 +177,154 @@ expect: red
 id: M-pre-rule-removed
 file: bin/brief-lint
 sed: s/--pre\\b"),/--zzz\\b"),/
+expect: red
+
+id: M-snippet-check
+file: bin/brief-lint
+sed: s/if snippet and not any(snippet in ln.strip() for ln in flines\[start - 1:top\]):/if False:/
+expect: red
+
+id: M-snippet-backtick
+file: bin/brief-lint
+sed: s/(?:`?\[ \\t]\*「/(?:「/
+expect: red
+
+id: M-unlisted-problem
+file: bin/brief-lint
+sed: s/if counts and is_command_shaped(cmd):/if False:/
+expect: red
+
+id: M-unlisted-shape
+file: bin/brief-lint
+sed: s/return len(command_tokens(cmd)) >= 2/return True/
+expect: red
+
+id: M-ack-halfwidth
+file: bin/brief-lint
+sed: s|^ACK_RE = .*|ACK_RE = re.compile(r"（不實跑：.+）\\s*$")|
+expect: red
+
+id: M-scope-ignored
+file: bin/brief-lint
+sed: s/if rc == 0:/if False:/
+expect: red
+
+id: M-scope-glob
+file: bin/brief-lint
+sed: s/if GLOB_CHARS_RE.search(path):/if False:/
+expect: red
+
+id: M-scope-unchecked
+file: bin/brief-lint
+sed: s/elif rc != 1:/elif False:/
+expect: red
+
+id: M-scope-outside-repo
+file: bin/brief-lint
+sed: s/return path\[len(prefix):\] if path.startswith(prefix) else None/return path/
+expect: red
+
+id: M-allow-bin-help
+file: bin/brief-lint
+sed: s/trust-dir) --help\$"/trust-dir|.*) --help$"/
+expect: red
+
+id: M-allow-hooks-test
+file: bin/brief-lint
+sed: s/(?: -v)?\$",/.*",/
+expect: red
+
+id: M-dotslash-command
+file: bin/brief-lint
+sed: s|if cmd.startswith(("bash ", "python3 ")) or tok == "cd":|if cmd.startswith(("bash ", "python3 ", "./")) or tok == "cd":|
+expect: red
+
+id: M-ro-prettier-flags
+file: bin/brief-lint
+sed: s|--check(?: {PATH_ARG})\*|--[^ ]+(?: [^ ]+)*|
+expect: red
+
+id: M-ro-graft-norefresh
+file: bin/brief-lint
+sed: s#(?=\.\* --no-refresh(?: |\$))##
+expect: red
+
+id: M-ro-gofmt-write
+file: bin/brief-lint
+sed: s/gofmt -l(?: /gofmt -[lw](?: /
+expect: red
+
+id: M-ro-vuetsc-flags
+file: bin/brief-lint
+sed: s/--noEmit(?: --skipLibCheck)?/--noEmit(?: --[A-Za-z]+)*/
+expect: red
+
+id: M-fence-heading
+file: bin/brief-lint
+sed: s/    elif in_fence:/    elif False:/
+expect: red
+
+id: M-cand-first-code
+file: bin/brief-lint
+sed: s/is_top_bullet and i == 0/True/
+expect: red
+
+id: M-cand-bullet
+file: bin/brief-lint
+sed: s/is_top_bullet = TOP_BULLET_RE.match(ln) is not None/is_top_bullet = False/
+expect: red
+
+id: M-bullet-star
+file: bin/brief-lint
+sed: s/(?:\[-\*]|/(?:-|/
+expect: red
+
+id: M-ack-removed
+file: bin/brief-lint
+sed: s/acked = (is_last and ACK_RE.search(line) is not None) or ACK_RE.search(cmd) is not None/acked = False/
+expect: red
+
+id: M-ack-allowed-runs
+file: bin/brief-lint
+sed: s/^        if acked:$/        if False:/
+expect: red
+
+id: M-ack-strip-code
+file: bin/brief-lint
+sed: s/cmd = ACK_RE.sub("", cmd).strip()/cmd = cmd.strip()/
+expect: red
+
+id: M-ack-greedy
+file: bin/brief-lint
+sed: s|^ACK_RE = .*|ACK_RE = re.compile(r"[（(]不實跑[：:].+[）)][\\s。.]*$")|
+expect: red
+
+id: M-graft-base
+file: bin/brief-lint
+sed: s|^GRAFT_BASE = .*|GRAFT_BASE = r"\\S+"|
+expect: red
+
+id: M-path-dotdot
+file: bin/brief-lint
+sed: s/(?!\\S\*\\\.\\\.)//
+expect: red
+
+id: M-deny-env-extra
+file: bin/brief-lint
+sed: s/WARNINGS)|NODE_PATH|HOME|XDG_\\w\*|GOENV|GOROOT|GOTOOLCHAIN|/WARNINGS)|/
+expect: red
+
+id: M-exception-exit2
+file: bin/brief-lint
+sed: s/except Exception as e:/except ZeroDivisionError as e:/
+expect: red
+
+id: M-ack-last-only
+file: bin/brief-lint
+sed: s/(is_last and ACK_RE.search(line) is not None)/(ACK_RE.search(line) is not None)/
+expect: red
+
+id: M-vuetsc-abs-path
+file: bin/brief-lint
+sed: s|-p (?!/){PATH_ARG}|-p {PATH_ARG}|
 expect: red

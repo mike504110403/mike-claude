@@ -650,12 +650,158 @@ vr --repo "$REPO" --config "$TMP/cfg_cwdrun.json" --out "$TMP/out8d"
 EXPECT_CWD="$(cd "$REPO/sub" && pwd -P)"
 assert_line "cwd: 相對 repo 根" "$OUT" "NEW_FAIL c $EXPECT_CWD"
 
+# ---------- 9. --record／--check-record ----------
+export VERIFY_RUN_EVIDENCE="$TMP/evidence"
+LEDGER="$VERIFY_RUN_EVIDENCE/foo/verify-run.jsonl"
+ledger_rows() { if [ -f "$LEDGER" ]; then wc -l < "$LEDGER" | tr -d ' '; else echo 0; fi; }
+ledger_last() {
+  python3 -c 'import json,sys; r=json.loads(open(sys.argv[1]).read().splitlines()[-1]); print(" ".join([r["tree"], r["head"], r["branch"], r["config"], str(bool(r["time"])), r["config_sha256"]]))' "$LEDGER"
+}
+WT_TREE="$(git -C "$WT" rev-parse 'HEAD^{tree}')"
+WT_HEAD="$(git -C "$WT" rev-parse HEAD)"
+CFG_ABS="$(cd "$VERIFY_RUN_CHECKS/foo" && pwd -P)/verify.json"
+checks_with() { mkdir -p "$TMP/$1/foo"; cat > "$TMP/$1/foo/verify.json"; }
+
+vr --repo "$WT" --out "$TMP/out9a" --record
+assert_eq "record: PASS 乾淨 → exit 0" 0 "$RC"
+assert_line "record: 印 RECORDED <tree>" "$OUT" "RECORDED $WT_TREE"
+assert_eq "record: 帳本一列" 1 "$(ledger_rows)"
+LAST="$(ledger_last)"
+assert_contains "record: tree 正確" "$LAST" "$WT_TREE $WT_HEAD wt/x "
+assert_contains "record: config 是絕對路徑" "$LAST" " $CFG_ABS True"
+CFG_SHA="$(shasum -a 256 "$CFG_ABS" | cut -d" " -f1)"
+assert_contains "record: config_sha256 是設定檔內容雜湊" "$LAST" "True $CFG_SHA"
+
+vr --repo "$WT" --config "$TMP/cfg_pass.json" --out "$TMP/out9b"
+assert_eq "record: 沒帶 --record 不寫" 1 "$(ledger_rows)"
+assert_not_contains "record: 沒帶 --record 不印 RECORDED" "$OUT" "RECORDED"
+
+printf 'dirty\n' > "$WT/untracked.txt"
+vr --repo "$WT" --out "$TMP/out9c" --record
+assert_eq "record: 跑之前有未 commit 檔 → exit 照判定 0" 0 "$RC"
+assert_contains "record: 跑之前有未 commit 檔 → NOT_RECORDED" "$OUT" "NOT_RECORDED"
+assert_eq "record: 跑之前有未 commit 檔 → 不寫" 1 "$(ledger_rows)"
+rm "$WT/untracked.txt"
+
+checks_with checks_fail <<EOF
+{"commands":[{"name":"f","cmd":"bash $FX/fail_a.sh","kind":"generic"}]}
+EOF
+VERIFY_RUN_CHECKS="$TMP/checks_fail" vr --repo "$WT" --out "$TMP/out9d" --record
+assert_eq "record: FAIL → exit 1" 1 "$RC"
+assert_contains "record: FAIL → NOT_RECORDED" "$OUT" "NOT_RECORDED"
+assert_eq "record: FAIL → 不寫" 1 "$(ledger_rows)"
+
+checks_with checks_untracked <<EOF
+{"commands":[{"name":"d","cmd":"printf x > made-by-check.txt"}]}
+EOF
+VERIFY_RUN_CHECKS="$TMP/checks_untracked" vr --repo "$WT" --out "$TMP/out9e" --record
+assert_line "record: 指令產生未追蹤檔仍記錄跑之前的 tree" "$OUT" "RECORDED $WT_TREE"
+assert_eq "record: 指令產生未追蹤檔 → 帳本兩列" 2 "$(ledger_rows)"
+rm "$WT/made-by-check.txt"
+
+checks_with checks_tracked <<EOF
+{"commands":[{"name":"t","cmd":"printf changed >> sub/f"}]}
+EOF
+VERIFY_RUN_CHECKS="$TMP/checks_tracked" vr --repo "$WT" --out "$TMP/out9i" --record
+assert_eq "record: 跑中改已追蹤檔 → exit 照判定 0" 0 "$RC"
+assert_contains "record: 跑中改已追蹤檔 → NOT_RECORDED" "$OUT" "NOT_RECORDED"
+assert_eq "record: 跑中改已追蹤檔 → 不寫" 2 "$(ledger_rows)"
+git -C "$WT" show HEAD:sub/f > "$WT/sub/f"
+
+for hide in --assume-unchanged --skip-worktree; do
+  git -C "$WT" update-index "$hide" sub/f
+  printf 'hidden\n' >> "$WT/sub/f"
+  vr --repo "$WT" --out "$TMP/out9k" --record
+  assert_contains "record: ${hide} 藏起來的改動 → NOT_RECORDED" "$OUT" "NOT_RECORDED"
+  git -C "$WT" update-index "--no-${hide#--}" sub/f
+  git -C "$WT" show HEAD:sub/f > "$WT/sub/f"
+done
+assert_eq "record: 藏起來的改動 → 不寫" 2 "$(ledger_rows)"
+
+for extra in "--only ok" "--config $TMP/cfg_pass.json" "--key foo"; do
+  # shellcheck disable=SC2086
+  vr --repo "$WT" --out "$TMP/out9g" --record $extra
+  assert_eq "record: 與 ${extra%% *} 併用 → 2" 2 "$RC"
+done
+assert_eq "record: 併用被拒 → 不寫" 2 "$(ledger_rows)"
+
+vr --check-record --repo "$REPO" --ref wt/x
+assert_line "check-record: 預設受保護分支清單" "$OUT" "PROTECTED main,master,dev"
+checks_with checks_develop <<EOF
+{"protected_branches":["develop"],"commands":[{"name":"ok","cmd":"true"}]}
+EOF
+VERIFY_RUN_CHECKS="$TMP/checks_develop" vr --check-record --repo "$REPO" --ref wt/x
+assert_line "check-record: protected_branches 可配置" "$OUT" "PROTECTED develop"
+checks_with checks_badprot <<EOF
+{"protected_branches":"dev","commands":[{"name":"ok","cmd":"true"}]}
+EOF
+VERIFY_RUN_CHECKS="$TMP/checks_badprot" vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: protected_branches 不是字串清單 → 2" 2 "$RC"
+
+vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 有相符 tree → 0" 0 "$RC"
+vr --check-record --repo "$WT" --ref "$WT_HEAD"
+assert_eq "check-record: ref 可給 hash → 0" 0 "$RC"
+vr --check-record --repo "$REPO" --ref refs/heads/wt/x
+assert_eq "check-record: ref 可給完整 refname → 0" 0 "$RC"
+printf 'more\n' > "$WT/more.txt"
+git -C "$WT" add more.txt >/dev/null 2>&1
+git -C "$WT" commit -q -m more >/dev/null 2>&1
+vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 之後又 commit、tree 不符 → 1" 1 "$RC"
+VERIFY_RUN_EVIDENCE="$TMP/noevidence" vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 沒有帳本 → 1" 1 "$RC"
+VERIFY_RUN_CHECKS="$TMP/nochecks" vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 沒有設定檔 → 3" 3 "$RC"
+vr --check-record --repo "$REPO" --ref no-such-branch
+assert_eq "check-record: ref 解析失敗 → 2" 2 "$RC"
+vr --check-record --repo "$REPO"
+assert_eq "check-record: 缺 --ref → 2" 2 "$RC"
+vr --repo "$REPO" --ref wt/x --out "$TMP/out9f"
+assert_eq "check-record: --ref 不搭 --check-record → 2" 2 "$RC"
+vr --check-record --record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 與 --record 併用 → 2" 2 "$RC"
+
+cfg marker <<EOF
+{"commands":[{"name":"m","cmd":"touch $TMP/marker-ran"}]}
+EOF
+vr --check-record --repo "$REPO" --ref wt/x --config "$TMP/cfg_marker.json"
+assert_eq "check-record: 不跑任何指令" no "$(exists "$TMP/marker-ran")"
+
+mkdir -p "$TMP/badledger/foo"
+printf 'not json\n' > "$TMP/badledger/foo/verify-run.jsonl"
+VERIFY_RUN_EVIDENCE="$TMP/badledger" vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 帳本壞列 → 2" 2 "$RC"
+
+cp "$VERIFY_RUN_CHECKS/foo/verify.json" "$TMP/alt.json"
+checks_with checks_alt < "$TMP/alt.json"
+VERIFY_RUN_EVIDENCE="$TMP/ev_alt" VERIFY_RUN_CHECKS="$TMP/checks_alt" vr --repo "$WT" --out "$TMP/out9j" --record
+assert_contains "check-record: 另一份設定檔產生紀錄" "$OUT" "RECORDED "
+VERIFY_RUN_EVIDENCE="$TMP/ev_alt" vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 紀錄的設定檔路徑與目前解析的不同 → 1" 1 "$RC"
+VERIFY_RUN_EVIDENCE="$TMP/ev_alt" VERIFY_RUN_CHECKS="$TMP/checks_alt" vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 同一份設定檔 → 0" 0 "$RC"
+printf '{"commands":[{"name":"ok","cmd":"true"},{"name":"strict","cmd":"true"}]}' > "$TMP/checks_alt/foo/verify.json"
+VERIFY_RUN_EVIDENCE="$TMP/ev_alt" VERIFY_RUN_CHECKS="$TMP/checks_alt" vr --check-record --repo "$REPO" --ref wt/x
+assert_eq "check-record: 設定檔改嚴後舊紀錄 → 1" 1 "$RC"
+
+ROWS_BEFORE="$(ledger_rows)"
+checks_with checks_commit <<EOF
+{"commands":[{"name":"c","cmd":"git commit -q --allow-empty -m moved"}]}
+EOF
+VERIFY_RUN_CHECKS="$TMP/checks_commit" vr --repo "$WT" --out "$TMP/out9h" --record
+assert_eq "record: 跑的途中 HEAD 變動 → exit 照判定 0" 0 "$RC"
+assert_contains "record: 跑的途中 HEAD 變動 → NOT_RECORDED" "$OUT" "NOT_RECORDED"
+assert_eq "record: 跑的途中 HEAD 變動 → 不寫" "$ROWS_BEFORE" "$(ledger_rows)"
+
 # ---------- --help ----------
 vr --help
 assert_eq "help: exit 0" 0 "$RC"
 assert_contains "help: 有用法" "$OUT" "--repo"
 assert_contains "help: 有 exit code 說明" "$OUT" "Exit codes"
 assert_contains "help: 說明 --base 只掃已 commit 範圍" "$OUT" "committed range"
+assert_contains "help: 說明 --check-record" "$OUT" "--check-record"
+assert_contains "help: 說明 --record 帳本位置" "$OUT" "verify-run.jsonl"
 
 echo
 echo "TOTAL: $((PASS_COUNT + FAIL_COUNT))  PASS: $PASS_COUNT  FAIL: $FAIL_COUNT"
